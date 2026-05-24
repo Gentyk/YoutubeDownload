@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import logging
+import secrets
 import shutil
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -63,6 +65,10 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
         download_dir=config.DOWNLOAD_DIR,
     )
     log.info("queue started: max_workers=%s max_size=%s", config.MAX_CONCURRENT, config.MAX_QUEUE_SIZE)
+    if config.AUTH_USER and config.AUTH_PASS:
+        log.info("Basic Auth ENABLED (user=%s)", config.AUTH_USER)
+    else:
+        log.warning("Basic Auth DISABLED — bind to 127.0.0.1 or use VPN, do NOT expose publicly.")
     try:
         yield
     finally:
@@ -74,6 +80,71 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
 app = FastAPI(title="yt2mp3", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+# --- Basic Auth (optional) --------------------------------------------------
+
+class BasicAuthMiddleware:
+    """ASGI middleware: require HTTP Basic Auth on all routes except /healthz.
+
+    Activated only when both ``YT2MP3_AUTH_USER`` and ``YT2MP3_AUTH_PASS`` are set.
+    Uses ``secrets.compare_digest`` to avoid timing leaks. /healthz is open so
+    external uptime monitors can ping without credentials.
+    """
+
+    OPEN_PATHS = frozenset({"/healthz"})
+
+    def __init__(self, app, user: str, password: str) -> None:
+        self.app = app
+        self.user = user
+        self.password = password
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
+        if path in self.OPEN_PATHS:
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers") or [])
+        auth = headers.get(b"authorization", b"").decode("latin-1")
+        if not auth.startswith("Basic "):
+            await self._challenge(send)
+            return
+        try:
+            decoded = base64.b64decode(auth[6:].strip()).decode("utf-8")
+            user, _, password = decoded.partition(":")
+        except (ValueError, UnicodeDecodeError):
+            await self._challenge(send)
+            return
+        ok_user = secrets.compare_digest(user, self.user)
+        ok_pass = secrets.compare_digest(password, self.password)
+        if not (ok_user and ok_pass):
+            await self._challenge(send)
+            return
+        await self.app(scope, receive, send)
+
+    @staticmethod
+    async def _challenge(send) -> None:
+        body = b"Authentication required\n"
+        await send({
+            "type": "http.response.start",
+            "status": 401,
+            "headers": [
+                (b"content-type", b"text/plain; charset=utf-8"),
+                (b"www-authenticate", b'Basic realm="yt2mp3", charset="UTF-8"'),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+
+if config.AUTH_USER and config.AUTH_PASS:
+    app.add_middleware(
+        BasicAuthMiddleware, user=config.AUTH_USER, password=config.AUTH_PASS
+    )
 
 
 # --- routes -----------------------------------------------------------------
@@ -235,5 +306,5 @@ async def healthz() -> dict:
         "ok": True,
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "downloads": str(config.DOWNLOAD_DIR),
-        "now": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "now": datetime.now(UTC).isoformat(timespec="seconds"),
     }

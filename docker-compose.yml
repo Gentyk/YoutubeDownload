@@ -1,0 +1,25 @@
+services:
+  yt2mp3:
+    build: .
+    container_name: yt2mp3
+    restart: unless-stopped
+    ports:
+      # Bind to localhost on the host by default — exposed publicly only
+      # through Tailscale/reverse proxy. Change to "8000:8000" to expose globally
+      # (only do this WITH Basic Auth set in .env).
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      # Concurrency
+      YT2MP3_MAX_CONCURRENT: "3"
+      YT2MP3_MAX_QUEUE_SIZE: "50"
+      # Auth — set both to enable Basic Auth.
+      # Leave empty if you're behind Tailscale/VPN.
+      YT2MP3_AUTH_USER: "${YT2MP3_AUTH_USER:-}"
+      YT2MP3_AUTH_PASS: "${YT2MP3_AUTH_PASS:-}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

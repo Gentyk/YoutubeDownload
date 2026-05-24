@@ -26,6 +26,15 @@ Then open <http://127.0.0.1:8000>.
 | `YT2MP3_DB_PATH`         | `./yt2mp3.db`      | SQLite database file                     |
 | `YT2MP3_HOST`            | `127.0.0.1`        | Bind address (localhost only by default) |
 | `YT2MP3_PORT`            | `8000`             | HTTP port                                |
+| `YT2MP3_AUTH_USER`       | *(empty)*          | HTTP Basic Auth user — enable on host    |
+| `YT2MP3_AUTH_PASS`       | *(empty)*          | HTTP Basic Auth password                 |
+
+## Деплой на сервер
+
+Полная пошаговая инструкция в [`HOSTING.md`](HOSTING.md). Коротко:
+```bash
+docker compose up -d --build
+```
 
 ## Tests
 
