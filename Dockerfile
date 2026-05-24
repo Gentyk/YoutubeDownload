@@ -16,6 +16,12 @@ COPY README.md ./
 COPY yt2mp3/ ./yt2mp3/
 RUN uv sync --no-dev
 
+# yt-dlp stable on PyPI lags behind YouTube changes by weeks. The nightly
+# channel (pre-release tag) carries fixes within a day of breakage. We pin
+# the lower bound to whatever's current at build time; CI rebuilds pick up
+# the latest nightly automatically.
+RUN uv pip install --python /app/.venv/bin/python --prerelease=allow --upgrade "yt-dlp>=2026.5.1"
+
 # Persistent data lives outside the image; mount these from host.
 ENV YT2MP3_DOWNLOAD_DIR=/data/downloads \
     YT2MP3_DB_PATH=/data/yt2mp3.db \

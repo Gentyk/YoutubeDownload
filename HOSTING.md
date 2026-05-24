@@ -181,11 +181,22 @@ docker compose up -d --build
 ```
 
 ### Обновить yt-dlp (когда YouTube меняет API)
+
+Полный rebuild (медленнее, но чисто):
 ```bash
 docker compose down
 docker compose build --no-cache
 docker compose up -d
 ```
+
+Быстрый hot-fix (на запущенном контейнере, до следующего rebuild):
+```bash
+docker exec -w /app yt2mp3 uv pip install --python /app/.venv/bin/python \
+  --prerelease=allow --upgrade "yt-dlp>=$(date +%Y.%m.01)"
+docker compose restart
+```
+
+> **Важно**: стабильный канал yt-dlp на PyPI иногда отстаёт от YouTube-фиксов на 1-2 месяца. Мы используем pre-release (nightly) channel — он публикуется на PyPI ежедневно и содержит свежие фиксы экстрактора. Это уже зашито в Dockerfile.
 
 ### Бекап SQLite + mp3 на свой Mac
 ```bash

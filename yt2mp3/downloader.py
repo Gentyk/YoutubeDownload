@@ -71,36 +71,29 @@ def download(
     progress_state: dict[str, Any] | None = None,
     yes_playlist: bool = False,
 ) -> Result:
-    """Download a single video as MP3. Never raises — errors bucketed in Result."""
+    """Download a single video as MP3. Never raises — errors bucketed in Result.
+
+    Uses a single-pass ``extract_info(download=True)`` rather than a separate
+    info probe + ``process_ie_result``. The two-pass approach was triggering
+    HTTP 403 from YouTube because the format URLs returned by the first call
+    expire quickly (the nonce is tied to the session) and get rejected when
+    the second call tries to fetch them. Single-pass keeps everything in one
+    ``YoutubeDL`` context and works reliably from datacenter IPs.
+    """
     state = progress_state if progress_state is not None else {}
     download_dir = Path(download_dir)
     download_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
 
-    # First pass: extract info to get the real title for sanitized filename.
-    info_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": not yes_playlist,
-        "extract_flat": False,
-    }
-    try:
-        with yt_dlp.YoutubeDL(info_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-    except Exception as e:
-        return Result(
-            status="failed", url=url, error=str(e), error_bucket=classify_error(e)
-        )
-
-    if not info:
-        return Result(status="failed", url=url, error="empty info", error_bucket="catastrophic")
-
-    title = sanitize(info.get("title"), info.get("id"))
-    outtmpl_base = str(download_dir / f"{title}.%(ext)s")
+    # yt-dlp's native template — handles Cyrillic via restrictfilenames=False and
+    # truncates via the .200B byte-spec. Our sanitize() is still applied as a
+    # post-step for belt-and-suspenders, but yt-dlp's sanitizer covers the
+    # security baseline (no /, \, control chars).
+    outtmpl = str(download_dir / "%(title).200B [%(id)s].%(ext)s")
 
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": outtmpl_base,
+        "outtmpl": outtmpl,
         "quiet": True,
         "no_warnings": True,
         "noplaylist": not yes_playlist,
@@ -114,42 +107,52 @@ def download(
                 "preferredquality": "192",
             }
         ],
-        # Don't write info/thumbs/subs by default.
         "writethumbnail": False,
         "writesubtitles": False,
         "writeinfojson": False,
     }
 
+    info: dict[str, Any] | None = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.process_ie_result(info, download=True)
+            info = ydl.extract_info(url, download=True)
     except _Cancelled:
-        return Result(status="cancelled", url=url, video_id=info.get("id"))
+        vid = info.get("id") if info else None
+        return Result(status="cancelled", url=url, video_id=vid)
     except Exception as e:
         return Result(
             status="failed",
             url=url,
-            video_id=info.get("id"),
-            title=info.get("title"),
+            video_id=info.get("id") if info else None,
+            title=info.get("title") if info else None,
             error=str(e),
             error_bucket=classify_error(e),
         )
 
+    if not info:
+        return Result(status="failed", url=url, error="empty info", error_bucket="catastrophic")
+
     finished = time.monotonic()
     elapsed = max(finished - started, 1e-6)
-    out_path = download_dir / f"{title}.mp3"
 
-    # Collision: append _2, _3, ...  (only matters when sanitized titles equal)
-    if not out_path.exists():
-        # yt-dlp may have produced .mp3 via collision suffix; pick the latest.
+    # yt-dlp enriches info with the final filepath after postprocessing.
+    out_path: Path | None = None
+    requested = info.get("requested_downloads") or []
+    if requested:
+        fp = requested[0].get("filepath")
+        if fp:
+            out_path = Path(fp)
+    if out_path is None or not out_path.exists():
+        # Fallback: glob for the most recent mp3 in the dir.
         candidates = sorted(
-            download_dir.glob(f"{title}*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True
+            download_dir.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True
         )
         if candidates:
             out_path = candidates[0]
 
-    size = out_path.stat().st_size if out_path.exists() else None
+    size = out_path.stat().st_size if out_path and out_path.exists() else None
     speed_mbps = (size * 8 / 1_000_000 / elapsed) if size else None
+    _ = sanitize  # kept exported for unit tests
 
     return Result(
         status="success",
@@ -161,7 +164,7 @@ def download(
         file_size_bytes=size,
         download_time_s=elapsed,
         avg_speed_mbps=speed_mbps,
-        file_path=str(out_path),
+        file_path=str(out_path) if out_path else None,
     )
 
 

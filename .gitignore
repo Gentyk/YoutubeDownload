@@ -28,3 +28,4 @@ downloads/
 .vscode/
 .idea/
 *.swp
+creds
