@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# venv
+.venv/
+venv/
+
+# uv
+uv.lock
+
+# project data
+downloads/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+
+# OS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+*.swp
