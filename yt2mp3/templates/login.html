@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}yt2mp3 — Вход{% endblock %}
+
+{% block content %}
+<section class="max-w-sm mx-auto mt-12">
+  <div class="rounded-2xl bg-white border border-slate-200 p-8 shadow-sm">
+    <h1 class="text-2xl font-bold tracking-tight text-slate-900">
+      Вход <span class="text-brand-700">в yt2mp3</span>
+    </h1>
+    <p class="mt-1 text-sm text-slate-500">Личный архив. Введи логин и пароль.</p>
+
+    {% if error %}
+      <div class="mt-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm px-3 py-2">
+        {{ error }}
+      </div>
+    {% endif %}
+
+    <form method="post" action="/login" class="mt-6 space-y-4">
+      <input type="hidden" name="next" value="{{ next }}">
+
+      <label class="block">
+        <span class="text-xs font-medium text-slate-600 uppercase tracking-wide">Логин</span>
+        <input
+          type="text"
+          name="username"
+          required
+          autofocus
+          autocomplete="username"
+          class="mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus-ring"
+        >
+      </label>
+
+      <label class="block">
+        <span class="text-xs font-medium text-slate-600 uppercase tracking-wide">Пароль</span>
+        <input
+          type="password"
+          name="password"
+          required
+          autocomplete="current-password"
+          class="mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus-ring"
+        >
+      </label>
+
+      <button
+        type="submit"
+        class="w-full rounded-full bg-brand-700 hover:bg-brand-800 active:bg-brand-900 text-white font-semibold px-6 py-2.5 transition focus-ring"
+      >
+        Войти
+      </button>
+    </form>
+  </div>
+</section>
+{% endblock %}

@@ -28,10 +28,18 @@ MAX_QUEUE_SIZE = int(os.environ.get("YT2MP3_MAX_QUEUE_SIZE", "50"))
 HOST = os.environ.get("YT2MP3_HOST", "127.0.0.1")
 PORT = int(os.environ.get("YT2MP3_PORT", "8000"))
 
-# HTTP Basic Auth — only enforced when BOTH user and pass are set.
-# Leave empty for local / Tailscale-only deployments.
+# Login (cookie-session). Enforced when BOTH user and pass are set.
+# Leave empty for local-only deployments.
 AUTH_USER = os.environ.get("YT2MP3_AUTH_USER", "")
 AUTH_PASS = os.environ.get("YT2MP3_AUTH_PASS", "")
+
+# Signing key for session cookies. If unset, a random key is generated at
+# startup — that means sessions invalidate on every restart. For stable
+# sessions across restarts set this to a long random string.
+SECRET_KEY = os.environ.get("YT2MP3_SECRET_KEY", "")
+
+# Session cookie lifetime in seconds (default: 14 days).
+SESSION_MAX_AGE = int(os.environ.get("YT2MP3_SESSION_MAX_AGE", str(14 * 24 * 3600)))
 
 YOUTUBE_HOSTS = frozenset(
     {

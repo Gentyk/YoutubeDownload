@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 import secrets
 import shutil
@@ -11,9 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from yt2mp3 import config, db
 from yt2mp3.helpers import (
@@ -65,10 +65,15 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
         download_dir=config.DOWNLOAD_DIR,
     )
     log.info("queue started: max_workers=%s max_size=%s", config.MAX_CONCURRENT, config.MAX_QUEUE_SIZE)
-    if config.AUTH_USER and config.AUTH_PASS:
-        log.info("Basic Auth ENABLED (user=%s)", config.AUTH_USER)
+    if AUTH_ENABLED:
+        log.info("Login ENABLED (user=%s)", config.AUTH_USER)
+        if not config.SECRET_KEY:
+            log.warning(
+                "YT2MP3_SECRET_KEY not set — sessions invalidate on restart. "
+                "Set a long random string for persistent logins."
+            )
     else:
-        log.warning("Basic Auth DISABLED — bind to 127.0.0.1 or use VPN, do NOT expose publicly.")
+        log.warning("Login DISABLED — bind to 127.0.0.1 or use VPN, do NOT expose publicly.")
     try:
         yield
     finally:
@@ -82,68 +87,65 @@ app = FastAPI(title="yt2mp3", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# --- Basic Auth (optional) --------------------------------------------------
+# --- Session-based login (optional) -----------------------------------------
 
-class BasicAuthMiddleware:
-    """ASGI middleware: require HTTP Basic Auth on all routes except /healthz.
+AUTH_ENABLED = bool(config.AUTH_USER and config.AUTH_PASS)
+templates.env.globals["AUTH_ENABLED"] = AUTH_ENABLED
+_OPEN_PATHS = frozenset({"/login", "/logout", "/healthz"})
+_OPEN_PREFIXES = ("/static/",)
+
+
+class LoginRequiredMiddleware:
+    """Redirect unauthenticated requests to ``/login``.
 
     Activated only when both ``YT2MP3_AUTH_USER`` and ``YT2MP3_AUTH_PASS`` are set.
-    Uses ``secrets.compare_digest`` to avoid timing leaks. /healthz is open so
-    external uptime monitors can ping without credentials.
+    Reads the signed session cookie (populated by ``SessionMiddleware``) and
+    checks for ``user == AUTH_USER``. /healthz and /login stay open.
     """
 
-    OPEN_PATHS = frozenset({"/healthz"})
-
-    def __init__(self, app, user: str, password: str) -> None:
+    def __init__(self, app) -> None:
         self.app = app
-        self.user = user
-        self.password = password
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
+        if scope["type"] != "http" or not AUTH_ENABLED:
             await self.app(scope, receive, send)
             return
         path = scope.get("path", "")
-        if path in self.OPEN_PATHS:
+        if path in _OPEN_PATHS or any(path.startswith(p) for p in _OPEN_PREFIXES):
             await self.app(scope, receive, send)
             return
-
-        headers = dict(scope.get("headers") or [])
-        auth = headers.get(b"authorization", b"").decode("latin-1")
-        if not auth.startswith("Basic "):
-            await self._challenge(send)
+        session = scope.get("session") or {}
+        if session.get("user") == config.AUTH_USER:
+            await self.app(scope, receive, send)
             return
-        try:
-            decoded = base64.b64decode(auth[6:].strip()).decode("utf-8")
-            user, _, password = decoded.partition(":")
-        except (ValueError, UnicodeDecodeError):
-            await self._challenge(send)
-            return
-        ok_user = secrets.compare_digest(user, self.user)
-        ok_pass = secrets.compare_digest(password, self.password)
-        if not (ok_user and ok_pass):
-            await self._challenge(send)
-            return
-        await self.app(scope, receive, send)
-
-    @staticmethod
-    async def _challenge(send) -> None:
-        body = b"Authentication required\n"
+        # Not logged in → redirect to /login (preserves the desired path)
+        next_url = path
+        if scope.get("query_string"):
+            next_url += "?" + scope["query_string"].decode("latin-1")
+        location = "/login?next=" + next_url
         await send({
             "type": "http.response.start",
-            "status": 401,
+            "status": 303,
             "headers": [
-                (b"content-type", b"text/plain; charset=utf-8"),
-                (b"www-authenticate", b'Basic realm="yt2mp3", charset="UTF-8"'),
-                (b"content-length", str(len(body)).encode()),
+                (b"location", location.encode("latin-1")),
+                (b"content-length", b"0"),
             ],
         })
-        await send({"type": "http.response.body", "body": body})
+        await send({"type": "http.response.body", "body": b""})
 
 
-if config.AUTH_USER and config.AUTH_PASS:
+if AUTH_ENABLED:
+    # ORDER MATTERS — middlewares are applied bottom-up at call time.
+    # We want the request flow: Session populates scope["session"] → LoginRequired checks it.
+    # add_middleware wraps in LIFO order, so add LoginRequired FIRST, Session LAST,
+    # so that Session is outermost (runs first).
+    app.add_middleware(LoginRequiredMiddleware)
     app.add_middleware(
-        BasicAuthMiddleware, user=config.AUTH_USER, password=config.AUTH_PASS
+        SessionMiddleware,
+        secret_key=config.SECRET_KEY or secrets.token_urlsafe(32),
+        max_age=config.SESSION_MAX_AGE,
+        same_site="lax",
+        https_only=False,  # set True if you put HTTPS in front (Caddy/nginx)
     )
 
 
@@ -298,6 +300,53 @@ async def get_file(row_id: int) -> Response:
     if not p.exists():
         raise HTTPException(status_code=410, detail="file no longer exists")
     return FileResponse(p, media_type="audio/mpeg", filename=p.name)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def get_login(request: Request, next: str = "/") -> Response:
+    if not AUTH_ENABLED:
+        return RedirectResponse(url="/", status_code=303)
+    if request.session.get("user") == config.AUTH_USER:
+        return RedirectResponse(url=_safe_next(next), status_code=303)
+    return templates.TemplateResponse(
+        request, "login.html", {"next": _safe_next(next), "error": None}
+    )
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def post_login(
+    request: Request,
+    username: str = Form(""),
+    password: str = Form(""),
+    next: str = Form("/"),
+) -> Response:
+    if not AUTH_ENABLED:
+        return RedirectResponse(url="/", status_code=303)
+    ok_user = secrets.compare_digest(username, config.AUTH_USER)
+    ok_pass = secrets.compare_digest(password, config.AUTH_PASS)
+    if not (ok_user and ok_pass):
+        log.warning("failed login attempt user=%s", username[:32])
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"next": _safe_next(next), "error": "Неверный логин или пароль"},
+            status_code=401,
+        )
+    request.session["user"] = config.AUTH_USER
+    return RedirectResponse(url=_safe_next(next), status_code=303)
+
+
+@app.post("/logout")
+async def post_logout(request: Request) -> Response:
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
+def _safe_next(next_url: str) -> str:
+    """Only allow relative paths — prevent open-redirect."""
+    if not next_url or not next_url.startswith("/") or next_url.startswith("//"):
+        return "/"
+    return next_url
 
 
 @app.get("/healthz")
