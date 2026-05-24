@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}yt2mp3{% endblock %}</title>
+<script src="/static/tailwind.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            50:  '#F5F3FF',
+            100: '#EDE9FE',
+            200: '#DDD6FE',
+            300: '#C4B5FD',
+            400: '#A78BFA',
+            500: '#8B5CF6',
+            600: '#7C3AED',
+            700: '#6D28D9',  // primary — TD-2
+            800: '#5B21B6',
+            900: '#4C1D95',
+          },
+        },
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        },
+        borderRadius: { '2xl': '1rem' },
+      },
+    },
+  };
+</script>
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+  .focus-ring:focus { outline: none; box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.35); }
+  /* waveform hero chart — see TD-1 */
+  .waveform-bar { transition: transform 200ms ease-out; transform-origin: bottom; }
+</style>
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/htmx-idiomorph.min.js" defer></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+<header class="border-b border-slate-200 bg-white/80 backdrop-blur sticky top-0 z-10">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 group">
+      <span class="inline-flex w-9 h-9 rounded-full bg-brand-700 text-white items-center justify-center font-bold tracking-tight">
+        ▶
+      </span>
+      <span class="text-lg font-semibold tracking-tight">yt2mp3</span>
+    </a>
+    <nav class="flex items-center gap-4 text-sm font-medium">
+      <a href="/" class="text-slate-700 hover:text-brand-700 transition">Скачать</a>
+      <a href="/stats" class="text-slate-700 hover:text-brand-700 transition">Статистика</a>
+    </nav>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-6 py-10">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="max-w-6xl mx-auto px-6 py-8 text-xs text-slate-400">
+  yt2mp3 — личный архив, localhost only.
+</footer>
+</body>
+</html>

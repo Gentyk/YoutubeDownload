@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}yt2mp3 — Статистика{% endblock %}
+
+{% block content %}
+{% if not has_data %}
+  <section class="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
+    <p class="text-2xl font-semibold text-slate-700">Пока пусто.</p>
+    <p class="mt-2 text-slate-500">Скачай первый трек — и здесь появятся графики.</p>
+    <a href="/" class="mt-6 inline-flex items-center rounded-full bg-brand-700 hover:bg-brand-800 text-white font-semibold px-5 py-2.5">Перейти к загрузке</a>
+  </section>
+{% else %}
+  <!-- KPI hero -->
+  <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
+      <p class="text-xs uppercase tracking-wide text-slate-500">Всего треков</p>
+      <p class="mt-2 text-7xl font-bold text-brand-700 tabular-nums leading-none">{{ kpi.total }}</p>
+    </div>
+    <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
+      <p class="text-xs uppercase tracking-wide text-slate-500">Общий размер</p>
+      <p class="mt-2 text-3xl font-bold tabular-nums">
+        {{ "%.1f"|format((kpi.total_bytes or 0) / 1024 / 1024) }} <span class="text-base text-slate-400">МБ</span>
+      </p>
+    </div>
+    <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
+      <p class="text-xs uppercase tracking-wide text-slate-500">Время скачиваний</p>
+      <p class="mt-2 text-3xl font-bold tabular-nums">
+        {{ "%.0f"|format((kpi.total_time_s or 0) / 60) }} <span class="text-base text-slate-400">мин</span>
+      </p>
+    </div>
+    <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm">
+      <p class="text-xs uppercase tracking-wide text-slate-500">Средняя скорость</p>
+      <p class="mt-2 text-3xl font-bold tabular-nums">
+        {{ "%.1f"|format(kpi.avg_speed_mbps or 0) }} <span class="text-base text-slate-400">Мбит/с</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- Waveform hero chart — TD-1 -->
+  <section class="mt-8 rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
+    <div class="flex items-baseline justify-between">
+      <h2 class="text-lg font-semibold tracking-tight">Скачивания · 30 дней</h2>
+      <span class="text-xs text-slate-400">audio waveform</span>
+    </div>
+    <div class="mt-4 h-48 relative">
+      <canvas id="hero-wave"></canvas>
+    </div>
+  </section>
+
+  <!-- secondary row -->
+  <section class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm lg:col-span-1">
+      <h3 class="font-semibold tracking-tight">Топ каналов</h3>
+      <div class="mt-3 h-64"><canvas id="chart-channels"></canvas></div>
+    </div>
+    <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm lg:col-span-1">
+      <h3 class="font-semibold tracking-tight">Скорости (Мбит/с)</h3>
+      <div class="mt-3 h-64"><canvas id="chart-speeds"></canvas></div>
+    </div>
+    <div class="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm lg:col-span-1">
+      <h3 class="font-semibold tracking-tight">Длительность (мин)</h3>
+      <div class="mt-3 h-64"><canvas id="chart-durations"></canvas></div>
+    </div>
+  </section>
+
+  <!-- recent table -->
+  <section class="mt-8 rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+      <h3 class="font-semibold tracking-tight">Последние 20</h3>
+      <div class="text-xs space-x-2" id="filter-chips">
+        <button data-filter="all" class="px-2 py-0.5 rounded-full bg-brand-700 text-white">все</button>
+        <button data-filter="success" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">готово</button>
+        <button data-filter="failed" class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">ошибки</button>
+      </div>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-500 text-left">
+        <tr>
+          <th class="px-5 py-2 font-medium">Название</th>
+          <th class="px-5 py-2 font-medium">Канал</th>
+          <th class="px-5 py-2 font-medium text-right">Длит.</th>
+          <th class="px-5 py-2 font-medium text-right">Размер</th>
+          <th class="px-5 py-2 font-medium">Когда</th>
+          <th class="px-5 py-2 font-medium"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for r in recent %}
+        <tr data-status="{{ r.status }}" class="hover:bg-slate-50">
+          <td class="px-5 py-2 truncate max-w-[40ch]" title="{{ r.title or r.url }}">
+            {{ r.title or r.url }}
+          </td>
+          <td class="px-5 py-2 text-slate-500">{{ r.channel or '—' }}</td>
+          <td class="px-5 py-2 text-right tabular-nums text-slate-500">
+            {% if r.duration_s %}{{ (r.duration_s // 60) }}:{{ "%02d"|format(r.duration_s % 60) }}{% else %}—{% endif %}
+          </td>
+          <td class="px-5 py-2 text-right tabular-nums text-slate-500">
+            {% if r.file_size_bytes %}{{ "%.1f"|format(r.file_size_bytes / 1024 / 1024) }} МБ{% else %}—{% endif %}
+          </td>
+          <td class="px-5 py-2 text-slate-500 tabular-nums text-xs">{{ r.finished_at or '—' }}</td>
+          <td class="px-5 py-2">
+            {% if r.status == 'success' and r.file_path %}
+              <a href="/file/{{ r.id }}" class="text-brand-700 hover:underline">скачать</a>
+            {% elif r.status == 'failed' %}
+              <span class="text-rose-600 text-xs" title="{{ r.error or '' }}">ошибка</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <script>
+    (function () {
+      const PURPLE = '#6D28D9';
+      const PURPLE_SOFT = '#A78BFA';
+
+      function histogram(values, buckets) {
+        if (!values || values.length === 0) return { labels: [], counts: [] };
+        const min = Math.min.apply(null, values);
+        const max = Math.max.apply(null, values);
+        if (min === max) return { labels: [min.toFixed(1)], counts: [values.length] };
+        const step = (max - min) / buckets;
+        const counts = new Array(buckets).fill(0);
+        const labels = [];
+        for (let i = 0; i < buckets; i++) {
+          labels.push((min + step * i).toFixed(1));
+        }
+        for (const v of values) {
+          let idx = Math.floor((v - min) / step);
+          if (idx >= buckets) idx = buckets - 1;
+          counts[idx]++;
+        }
+        return { labels, counts };
+      }
+
+      async function load() {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+
+        // Hero waveform — last 30 days. Mirror up/down to mimic an audio waveform.
+        const byDayMap = Object.fromEntries((data.by_day || []).map(d => [d.day, d.n]));
+        const days = [];
+        const today = new Date();
+        for (let i = 29; i >= 0; i--) {
+          const d = new Date(today.getTime() - i * 86400000);
+          const key = d.toISOString().slice(0, 10);
+          days.push({ label: d.getDate() + '/' + (d.getMonth() + 1), n: byDayMap[key] || 0 });
+        }
+        const maxN = Math.max(1, ...days.map(d => d.n));
+        const heroLabels = days.map(d => d.label);
+        const heroData = days.map(d => d.n);
+
+        new Chart(document.getElementById('hero-wave'), {
+          type: 'bar',
+          data: {
+            labels: heroLabels,
+            datasets: [
+              { data: heroData, backgroundColor: PURPLE, borderRadius: 8, borderSkipped: false },
+              { data: heroData.map(n => -n), backgroundColor: PURPLE_SOFT, borderRadius: 8, borderSkipped: false },
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 700, easing: 'easeOutCubic' },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => Math.abs(ctx.raw) + ' треков' } } },
+            scales: {
+              x: { stacked: true, grid: { display: false }, ticks: { color: '#94A3B8', maxRotation: 0, autoSkipPadding: 12 } },
+              y: { stacked: true, display: false, suggestedMin: -maxN, suggestedMax: maxN },
+            }
+          }
+        });
+
+        // top channels
+        const ch = data.top_channels || [];
+        new Chart(document.getElementById('chart-channels'), {
+          type: 'bar',
+          data: {
+            labels: ch.map(c => c.channel),
+            datasets: [{ data: ch.map(c => c.n), backgroundColor: PURPLE }]
+          },
+          options: {
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+            maintainAspectRatio: false,
+          }
+        });
+
+        // speeds histogram
+        const sp = histogram(data.speeds || [], 12);
+        new Chart(document.getElementById('chart-speeds'), {
+          type: 'bar',
+          data: { labels: sp.labels, datasets: [{ data: sp.counts, backgroundColor: PURPLE_SOFT }] },
+          options: { plugins: { legend: { display: false } }, maintainAspectRatio: false }
+        });
+
+        // durations histogram (minutes)
+        const dur = histogram((data.durations || []).map(s => s / 60), 12);
+        new Chart(document.getElementById('chart-durations'), {
+          type: 'bar',
+          data: { labels: dur.labels, datasets: [{ data: dur.counts, backgroundColor: PURPLE_SOFT }] },
+          options: { plugins: { legend: { display: false } }, maintainAspectRatio: false }
+        });
+      }
+
+      // Filter chips
+      document.getElementById('filter-chips')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const filter = btn.dataset.filter;
+        document.querySelectorAll('#filter-chips button').forEach(b => {
+          b.classList.toggle('bg-brand-700', b === btn);
+          b.classList.toggle('text-white', b === btn);
+          b.classList.toggle('bg-slate-100', b !== btn);
+          b.classList.toggle('text-slate-700', b !== btn);
+        });
+        document.querySelectorAll('tbody tr').forEach(row => {
+          const status = row.dataset.status;
+          row.style.display =
+            (filter === 'all' || status === filter) ? '' : 'none';
+        });
+      });
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => { Chart && load(); });
+      } else {
+        // Defer one tick so chart.umd.min.js (also deferred) is parsed.
+        setTimeout(() => { if (window.Chart) load(); else window.addEventListener('load', load); }, 0);
+      }
+    })();
+  </script>
+  <script src="/static/chart.umd.min.js"></script>
+{% endif %}
+{% endblock %}

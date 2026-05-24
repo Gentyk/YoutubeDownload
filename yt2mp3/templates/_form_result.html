@@ -1,0 +1,59 @@
+{% if errors %}
+  <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 mb-3">
+    <p class="font-semibold mb-1">Не получилось:</p>
+    <ul class="list-disc list-inside space-y-0.5">
+      {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% if playlists %}
+  {% for pl in playlists %}
+    <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 mb-3">
+      <p class="font-semibold mb-1">Это playlist — {{ pl.count }} видео</p>
+      <p class="text-xs mb-2">{{ pl.title or pl.url }}</p>
+      <ul class="text-xs space-y-0.5 mb-3">
+        {% for entry in pl.preview %}
+          <li class="font-mono truncate max-w-[60ch]">· {{ entry.title or entry.id }}</li>
+        {% endfor %}
+        {% if pl.count > pl.preview|length %}
+          <li class="text-amber-700">… и ещё {{ pl.count - pl.preview|length }}</li>
+        {% endif %}
+      </ul>
+      <form hx-post="/download" hx-target="#form-result" hx-swap="innerHTML" class="flex items-center gap-2">
+        <input type="hidden" name="urls" value="{{ pl.url }}">
+        <input type="hidden" name="allow_playlist" value="1">
+        <button class="rounded-full bg-brand-700 hover:bg-brand-800 text-white text-xs font-semibold px-3 py-1.5">
+          Скачать всё ({{ pl.count }})
+        </button>
+        <button type="button" onclick="this.closest('div').remove()"
+                class="rounded-full bg-white border border-amber-200 text-amber-800 text-xs font-semibold px-3 py-1.5">
+          Отмена
+        </button>
+      </form>
+    </div>
+  {% endfor %}
+{% endif %}
+
+{% if submitted %}
+  <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 mb-3">
+    Добавлено в очередь: <span class="font-semibold">{{ submitted|length }}</span>
+  </div>
+{% endif %}
+
+{% if skipped %}
+  <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 mb-3">
+    <p class="font-semibold">Уже было скачано раньше — пропущено:</p>
+    <ul class="list-disc list-inside text-xs mt-1 space-y-0.5">
+      {% for s in skipped %}
+        <li>
+          <span class="font-mono">{{ s.url }}</span>
+          {% if s.existing_id %}
+            · <a class="underline" href="/file/{{ s.existing_id }}">скачать существующий</a>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    <p class="text-xs mt-2 text-slate-500">Поставь галочку «скачать заново», если нужна свежая копия.</p>
+  </div>
+{% endif %}
