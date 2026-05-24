@@ -55,6 +55,7 @@
     </a>
     <nav class="flex items-center gap-4 text-sm font-medium">
       <a href="/" class="text-slate-700 hover:text-brand-700 transition">Скачать</a>
+      <a href="/library" class="text-slate-700 hover:text-brand-700 transition">Загружено</a>
       <a href="/stats" class="text-slate-700 hover:text-brand-700 transition">Статистика</a>
       {% if AUTH_ENABLED and request.url.path != '/login' %}
         <form method="post" action="/logout" class="inline-flex">

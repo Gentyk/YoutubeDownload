@@ -60,6 +60,8 @@
     </form>
 
     <div id="form-result" class="mt-6"></div>
+
+    <div id="recent" hx-get="/library/fragment" hx-trigger="load, every 5s" hx-swap="innerHTML" class="mt-6"></div>
   </div>
 
   <aside class="lg:col-span-2">

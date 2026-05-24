@@ -23,6 +23,7 @@ from yt2mp3.helpers import (
     is_playlist_only_url,
     normalize_url,
 )
+from yt2mp3.library import group_by_day
 from yt2mp3.logs import setup_logging
 from yt2mp3.queue import JobQueue, QueueFull, cleanup_orphans
 
@@ -163,6 +164,15 @@ async def queue_fragment(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "_queue.html", {"jobs": jobs})
 
 
+def _client_ip(request: Request) -> str | None:
+    """Real client IP, accounting for upstream proxies (Caddy/nginx)."""
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        # X-Forwarded-For: client, proxy1, proxy2 — first is the real client.
+        return fwd.split(",")[0].strip() or None
+    return request.client.host if request.client else None
+
+
 @app.post("/download", response_class=HTMLResponse)
 async def post_download(
     request: Request,
@@ -227,7 +237,12 @@ async def post_download(
             continue
 
         try:
-            job_id = q.submit(url, force=force_flag, yes_playlist=allow_playlist_flag)
+            job_id = q.submit(
+                url,
+                force=force_flag,
+                yes_playlist=allow_playlist_flag,
+                client_ip=_client_ip(request),
+            )
         except QueueFull:
             return templates.TemplateResponse(
                 request,
@@ -257,6 +272,54 @@ async def post_cancel(request: Request, job_id: str) -> HTMLResponse:
     return await queue_fragment(request)
 
 
+@app.get("/library", response_class=HTMLResponse)
+async def library_page(request: Request) -> HTMLResponse:
+    with db.connect(config.DB_PATH) as conn:
+        rows = [dict(r) for r in db.get_library_rows(conn)]
+    groups = group_by_day(rows)
+    return templates.TemplateResponse(
+        request,
+        "library.html",
+        {"groups": groups, "has_data": bool(rows)},
+    )
+
+
+@app.get("/library/fragment", response_class=HTMLResponse)
+async def library_recent_fragment(request: Request) -> HTMLResponse:
+    """Mini-panel on `/` — last 5 successful downloads."""
+    with db.connect(config.DB_PATH) as conn:
+        rows = [dict(r) for r in db.get_recent_successful(conn, limit=5)]
+    return templates.TemplateResponse(request, "_library_recent.html", {"rows": rows})
+
+
+@app.post("/file/{row_id}/delete", response_class=HTMLResponse)
+async def delete_file(request: Request, row_id: int) -> HTMLResponse:
+    """Hard-delete the mp3 from disk, soft-delete the DB row.
+
+    Returns the refreshed `/library` page so HTMX can swap the content.
+    """
+    with db.connect(config.DB_PATH) as conn:
+        row = db.get_by_id(conn, row_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="not found")
+        file_path = row["file_path"]
+        if file_path:
+            p = Path(file_path).resolve()
+            try:
+                p.relative_to(config.DOWNLOAD_DIR)
+            except ValueError:
+                raise HTTPException(status_code=403, detail="forbidden") from None
+            if p.exists():
+                try:
+                    p.unlink()
+                except OSError:
+                    log.exception("unlink failed for %s", p)
+        db.soft_delete(conn, row_id)
+    log.info("deleted row_id=%s", row_id)
+    # Re-render the library so HTMX swap shows the row gone.
+    return await library_page(request)
+
+
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_page(request: Request) -> HTMLResponse:
     with db.connect(config.DB_PATH) as conn:
@@ -278,6 +341,7 @@ async def api_stats() -> JSONResponse:
             "top_channels": db.top_channels(conn, limit=10),
             "speeds": db.speed_samples(conn, last_n=500),
             "durations": db.duration_samples(conn, last_n=500),
+            "by_ip": db.ip_breakdown(conn, days=30),
         }
     return JSONResponse(payload)
 

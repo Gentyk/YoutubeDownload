@@ -38,8 +38,16 @@ CREATE INDEX IF NOT EXISTS idx_video_id ON downloads(video_id);
 CREATE INDEX IF NOT EXISTS idx_status ON downloads(status);
 """
 
+SCHEMA_V2 = """
+ALTER TABLE downloads ADD COLUMN client_ip TEXT;
+ALTER TABLE downloads ADD COLUMN deleted_at TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_deleted_at ON downloads(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_client_ip ON downloads(client_ip);
+"""
+
 MIGRATIONS: list[tuple[int, str]] = [
     (1, SCHEMA_V1),
+    (2, SCHEMA_V2),
 ]
 
 
@@ -114,6 +122,62 @@ def get_recent(conn: sqlite3.Connection, limit: int = 20) -> list[sqlite3.Row]:
     )
 
 
+def get_library_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """All successful, non-deleted downloads — newest first."""
+    return list(
+        conn.execute(
+            "SELECT * FROM downloads "
+            "WHERE status='success' AND deleted_at IS NULL "
+            "ORDER BY COALESCE(finished_at, started_at) DESC, id DESC"
+        )
+    )
+
+
+def get_recent_successful(
+    conn: sqlite3.Connection, limit: int = 5
+) -> list[sqlite3.Row]:
+    """Most recent N successful, non-deleted downloads — for mini-panel."""
+    return list(
+        conn.execute(
+            "SELECT * FROM downloads "
+            "WHERE status='success' AND deleted_at IS NULL "
+            "ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?",
+            (limit,),
+        )
+    )
+
+
+def soft_delete(conn: sqlite3.Connection, row_id: int) -> bool:
+    """Mark a row as deleted. Returns True if a row was actually updated."""
+    from datetime import UTC, datetime
+
+    cur = conn.execute(
+        "UPDATE downloads SET deleted_at=? WHERE id=? AND deleted_at IS NULL",
+        (datetime.now(UTC).isoformat(timespec="seconds"), row_id),
+    )
+    return cur.rowcount > 0
+
+
+def ip_breakdown(conn: sqlite3.Connection, days: int = 30) -> list[dict[str, Any]]:
+    """Aggregate downloads by client_ip over the last N days."""
+    rows = conn.execute(
+        """
+        SELECT
+            COALESCE(client_ip, '—') AS ip,
+            COUNT(*) AS n
+        FROM downloads
+        WHERE status='success'
+          AND deleted_at IS NULL
+          AND finished_at >= date('now', ?)
+        GROUP BY ip
+        ORDER BY n DESC
+        LIMIT 10
+        """,
+        (f"-{int(days)} days",),
+    ).fetchall()
+    return [{"ip": r["ip"], "n": r["n"]} for r in rows]
+
+
 def get_by_id(conn: sqlite3.Connection, row_id: int) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM downloads WHERE id=?", (row_id,)).fetchone()
 
@@ -131,6 +195,7 @@ def find_successful_by_video_id(
 # --- aggregates for /api/stats ---------------------------------------------
 
 def kpi_totals(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Aggregate KPIs across history. Deleted rows still count (preserves trends)."""
     row = conn.execute(
         """
         SELECT
@@ -139,7 +204,8 @@ def kpi_totals(conn: sqlite3.Connection) -> dict[str, Any]:
             COALESCE(SUM(download_time_s), 0)                       AS total_time_s,
             COALESCE(AVG(avg_speed_mbps), 0)                        AS avg_speed_mbps,
             SUM(CASE WHEN status='success' THEN 1 ELSE 0 END)       AS success_count,
-            SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END)        AS failed_count
+            SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END)        AS failed_count,
+            SUM(CASE WHEN status='success' AND deleted_at IS NULL THEN 1 ELSE 0 END) AS active_count
         FROM downloads
         """
     ).fetchone()

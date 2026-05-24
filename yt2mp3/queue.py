@@ -34,6 +34,7 @@ class Job:
     started_at: float | None = None
     result: Result | None = None
     future: Future | None = None
+    client_ip: str | None = None  # who initiated the download (for per-IP stats)
 
 
 class QueueFull(Exception):
@@ -65,15 +66,21 @@ class JobQueue:
 
     # ---- public API --------------------------------------------------------
 
-    def submit(self, url: str, force: bool = False, yes_playlist: bool = False) -> str:
+    def submit(
+        self,
+        url: str,
+        force: bool = False,
+        yes_playlist: bool = False,
+        client_ip: str | None = None,
+    ) -> str:
         if self._shutdown:
             raise RuntimeError("queue is shut down")
         with self._lock:
             if len([j for j in self._jobs.values() if j.state in ("queued", "downloading", "converting")]) >= self._max_size:
                 raise QueueFull(f"queue is full ({self._max_size})")
-            job = Job(job_id=str(uuid.uuid4()), url=url)
+            job = Job(job_id=str(uuid.uuid4()), url=url, client_ip=client_ip)
             self._jobs[job.job_id] = job
-        log.info("submit url=%s job_id=%s", url, job.job_id)
+        log.info("submit url=%s job_id=%s ip=%s", url, job.job_id, client_ip or "-")
         job.future = self._executor.submit(self._run, job, force, yes_playlist)
         return job.job_id
 
@@ -184,6 +191,7 @@ class JobQueue:
             "error_bucket": result.error_bucket,
             "started_at": started,
             "finished_at": finished,
+            "client_ip": job.client_ip,
         }
         try:
             with db.connect(self._db_path) as conn:
