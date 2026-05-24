@@ -10,7 +10,6 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import yt_dlp
@@ -34,7 +33,7 @@ def _truncate_to_bytes(s: str, max_bytes: int) -> str:
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
-def sanitize(title: Optional[str], video_id: Optional[str]) -> str:
+def sanitize(title: str | None, video_id: str | None) -> str:
     """Make a filesystem-safe filename. Preserves Unicode (incl. Cyrillic).
 
     Strips: path separators, control chars, ``..`` traversal patterns. Truncates
@@ -85,11 +84,11 @@ def filter_youtube(urls: list[str]) -> list[str]:
 _VIDEO_ID_RE = re.compile(config.VIDEO_ID_RE)
 
 
-def is_valid_video_id(s: Optional[str]) -> bool:
+def is_valid_video_id(s: str | None) -> bool:
     return bool(s and _VIDEO_ID_RE.match(s))
 
 
-def normalize_url(url: str) -> Optional[str]:
+def normalize_url(url: str) -> str | None:
     """Extract the canonical 11-char video_id from a YouTube URL, or None.
 
     Recognises ``youtu.be/<id>``, ``youtube.com/watch?v=<id>``,
@@ -189,8 +188,8 @@ def classify_error(e: BaseException) -> str:
 @dataclass(frozen=True)
 class DedupResult:
     action: str  # 'download' | 'skip' | 'redownload' | 'invalid'
-    existing_id: Optional[int] = None
-    existing_path: Optional[str] = None
+    existing_id: int | None = None
+    existing_path: str | None = None
 
 
 def dedup_check(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from yt2mp3.helpers import sanitize
 
-
 # U1 — empty title fallback ---------------------------------------------------
 
 def test_sanitize_empty_title_falls_back_to_video_id():

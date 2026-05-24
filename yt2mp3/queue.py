@@ -13,8 +13,9 @@ import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from yt2mp3 import config, db, downloader
 from yt2mp3.downloader import Result
@@ -30,9 +31,9 @@ class Job:
     progress: dict[str, Any] = field(default_factory=dict)
     cancel_event: threading.Event = field(default_factory=threading.Event)
     submitted_at: float = field(default_factory=time.time)
-    started_at: Optional[float] = None
-    result: Optional[Result] = None
-    future: Optional[Future] = None
+    started_at: float | None = None
+    result: Result | None = None
+    future: Future | None = None
 
 
 class QueueFull(Exception):
@@ -88,7 +89,7 @@ class JobQueue:
                 job.state = "cancelled"
         return True
 
-    def get_job(self, job_id: str) -> Optional[Job]:
+    def get_job(self, job_id: str) -> Job | None:
         with self._lock:
             return self._jobs.get(job_id)
 
@@ -159,11 +160,11 @@ class JobQueue:
     def _persist_terminal(self, job: Job, result: Result) -> None:
         # Single critical section: insert into DB. We don't hold self._lock here
         # because DB writes are independent of in-memory state.
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        finished = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        finished = datetime.now(UTC).isoformat(timespec="seconds")
         started = (
-            datetime.fromtimestamp(job.started_at, tz=timezone.utc).isoformat(timespec="seconds")
+            datetime.fromtimestamp(job.started_at, tz=UTC).isoformat(timespec="seconds")
             if job.started_at
             else finished
         )

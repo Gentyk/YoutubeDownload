@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yt_dlp
 
@@ -24,16 +24,16 @@ log = logging.getLogger(__name__)
 class Result:
     status: str  # 'success' | 'failed' | 'cancelled'
     url: str = ""
-    video_id: Optional[str] = None
-    title: Optional[str] = None
-    channel: Optional[str] = None
-    duration_s: Optional[int] = None
-    file_size_bytes: Optional[int] = None
-    download_time_s: Optional[float] = None
-    avg_speed_mbps: Optional[float] = None
-    file_path: Optional[str] = None
-    error: Optional[str] = None
-    error_bucket: Optional[str] = None
+    video_id: str | None = None
+    title: str | None = None
+    channel: str | None = None
+    duration_s: int | None = None
+    file_size_bytes: int | None = None
+    download_time_s: float | None = None
+    avg_speed_mbps: float | None = None
+    file_path: str | None = None
+    error: str | None = None
+    error_bucket: str | None = None
     progress: dict[str, Any] = field(default_factory=dict)
 
 
@@ -41,7 +41,7 @@ class _Cancelled(Exception):
     pass
 
 
-def _make_progress_hook(cancel: Optional[threading.Event], state: dict[str, Any]):
+def _make_progress_hook(cancel: threading.Event | None, state: dict[str, Any]):
     def hook(d: dict[str, Any]) -> None:
         if cancel is not None and cancel.is_set():
             raise _Cancelled("cancelled by user")
@@ -67,8 +67,8 @@ def _make_postprocessor_hook(state: dict[str, Any]):
 def download(
     url: str,
     download_dir: Path | str,
-    cancel: Optional[threading.Event] = None,
-    progress_state: Optional[dict[str, Any]] = None,
+    cancel: threading.Event | None = None,
+    progress_state: dict[str, Any] | None = None,
     yes_playlist: bool = False,
 ) -> Result:
     """Download a single video as MP3. Never raises — errors bucketed in Result."""
