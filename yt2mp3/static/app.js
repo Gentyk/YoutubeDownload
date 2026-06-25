@@ -155,11 +155,17 @@
 
   // ---- player dock (real tracks) ----
   let curAudio = null;
+  let dockSig = null;   // signature of the rendered track set — skip rebuild if unchanged
   function loadLibrary() {
     api("/api/library").then(res => renderTracks(res.tracks || [])).catch(() => {});
   }
   function fmtDur(s) { if (!s) return ""; const m = Math.floor(s / 60); return m + ":" + String(s % 60).padStart(2, "0"); }
   function renderTracks(tracks) {
+    // Don't touch the DOM if the set of tracks is unchanged — rebuilding would
+    // destroy a currently-playing <audio> element and stop playback.
+    const sig = tracks.map(t => t.id).join(",");
+    if (sig === dockSig) return;
+    dockSig = sig;
     dockCount.textContent = tracks.length + " " + (T.tracks || "");
     if (!tracks.length) {
       dockList.innerHTML = `<li class="dock-empty">${T.emptyTracks || ""}</li>`;

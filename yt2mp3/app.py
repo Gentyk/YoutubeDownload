@@ -407,11 +407,12 @@ async def api_queue(request: Request) -> JSONResponse:
     for j in get_queue().snapshot():
         if scope is not None and j.client_ip != scope:
             continue
+        title = (j.result.title if j.result else None) or (j.progress or {}).get("title")
         jobs.append({
             "id": j.job_id,
             "url": j.url,
             "state": j.state,  # queued|downloading|converting|done|failed|cancelled
-            "title": (j.result.title if j.result else None),
+            "title": title,
             "pct": _job_pct(j),
             "error": (j.result.error if (j.result and j.state == "failed") else None),
         })

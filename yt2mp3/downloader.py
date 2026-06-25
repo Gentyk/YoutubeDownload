@@ -46,6 +46,12 @@ def _make_progress_hook(cancel: threading.Event | None, state: dict[str, Any]):
         if cancel is not None and cancel.is_set():
             raise _Cancelled("cancelled by user")
         # O(1) — overwrite the same keys; queue UI polls this dict.
+        # Capture the real title early (yt-dlp knows it once download starts), so
+        # the queue/balls can show the actual name instead of "…".
+        info = d.get("info_dict") or {}
+        title = info.get("title")
+        if title:
+            state["title"] = title
         state["status"] = d.get("status", state.get("status"))
         if d.get("status") == "downloading":
             state["downloaded_bytes"] = d.get("downloaded_bytes")
