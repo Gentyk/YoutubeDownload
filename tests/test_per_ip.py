@@ -116,3 +116,25 @@ def test_one_audio_at_a_time_script_present(client):
     r = client.get("/")
     # global handler that pauses other media when one starts
     assert "addEventListener('play'" in r.text
+
+
+# --- owner can delete own track; sysmon ------------------------------------
+
+def test_owner_can_delete_own_track(client, tmp_db_path: Path, tmp_download_dir: Path):
+    f = tmp_download_dir / "mine_del.mp3"
+    f.write_bytes(b"x")
+    with db.connect(tmp_db_path) as conn:
+        _seed(conn, "testclient", "MineDel", str(f))
+        rid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    r = client.post(f"/file/{rid}/delete", follow_redirects=False)
+    assert r.status_code == 200
+    assert not f.exists()
+
+
+def test_sysmon_samples():
+    from yt2mp3.sysmon import SysMonitor
+    m = SysMonitor(interval=1)
+    m._prev_cpu = (100.0, 50.0)
+    m._sample()
+    latest = m.latest()
+    assert "cpu_pct" in latest and "ram_pct" in latest

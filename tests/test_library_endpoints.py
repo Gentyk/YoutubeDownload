@@ -13,8 +13,8 @@ def test_delete_unlinks_file_and_soft_deletes_row(client, tmp_db_path: Path, tmp
     f.write_bytes(b"\x00" * 100)
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, video_id, title, file_path, status, finished_at) "
-            "VALUES (?, ?, ?, ?, 'success', datetime('now'))",
+            "INSERT INTO downloads (url, video_id, title, file_path, status, finished_at, client_ip) "
+            "VALUES (?, ?, ?, ?, 'success', datetime('now'), 'testclient')",
             ("https://youtu.be/aaaBBBcccDD", "aaaBBBcccDD", "Test", str(f)),
         )
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -36,7 +36,7 @@ def test_delete_nonexistent_row_returns_404(client):
 def test_delete_rejects_path_traversal(client, tmp_db_path: Path):
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, file_path, status) VALUES (?, ?, 'success')",
+            "INSERT INTO downloads (url, file_path, status, client_ip) VALUES (?, ?, 'success', 'testclient')",
             ("https://youtu.be/x", "/etc/passwd"),
         )
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]

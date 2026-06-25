@@ -77,3 +77,10 @@ INACTIVE_DAYS = int(os.environ.get("YT2MP3_INACTIVE_DAYS", "3"))
 
 # How often the background inactivity sweep runs (seconds).
 CLEANUP_INTERVAL_S = int(os.environ.get("YT2MP3_CLEANUP_INTERVAL_S", str(3600)))
+
+# How often CPU/RAM is sampled for the admin dashboard (seconds).
+SYSMON_INTERVAL_S = int(os.environ.get("YT2MP3_SYSMON_INTERVAL_S", "15"))
+
+# Supported UI languages; first is the default.
+SUPPORTED_LANGS = ("ru", "en", "fr", "de")
+DEFAULT_LANG = "ru"

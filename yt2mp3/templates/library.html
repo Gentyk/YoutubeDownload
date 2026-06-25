@@ -1,56 +1,45 @@
 {% extends "base.html" %}
-{% block title %}yt2mp3 — Загружено{% endblock %}
+{% block title %}yt2mp3 — {{ t('nav_library') }}{% endblock %}
 
 {% block content %}
 <section>
-  <div class="flex items-baseline justify-between mb-6">
-    <h1 class="text-3xl font-bold tracking-tight text-slate-900">Загружено</h1>
-    <span class="text-sm text-slate-500">
+  <div class="flex items-baseline justify-between mb-2">
+    <h1 class="text-3xl font-700 tracking-tight">{{ t('library_title') }}</h1>
+    <span class="text-sm text-ink/50">
       {% set total = groups | map(attribute=1) | map('length') | sum %}
-      {{ total }} трек{% if total % 10 == 1 and total % 100 != 11 %}{% elif total % 10 in (2,3,4) and total % 100 not in (12,13,14) %}а{% else %}ов{% endif %}
+      {{ total }} {{ t('tracks_word') }}
     </span>
   </div>
+  <p class="text-xs text-ink/40 mb-6">{{ t('only_your_tracks') }}</p>
 
   {% if not has_data %}
-    <div class="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
-      <p class="text-2xl font-semibold text-slate-700">Пока ничего не скачано.</p>
-      <p class="mt-2 text-slate-500">Скачай первый трек на главной — он появится здесь.</p>
-      <a href="/" class="mt-6 inline-flex items-center rounded-full bg-brand-700 hover:bg-brand-800 text-white font-semibold px-5 py-2.5">Перейти к загрузке</a>
+    <div class="rounded-3xl border-2 border-dashed border-brand-200 bg-white p-12 text-center">
+      <p class="text-2xl font-700 text-ink/80">{{ t('library_empty_title') }}</p>
+      <p class="mt-2 text-ink/50">{{ t('library_empty_sub') }}</p>
+      <a href="/" class="mt-6 inline-flex items-center rounded-full bg-brand-500 hover:bg-brand-600 text-white font-800 px-5 py-2.5 shadow-md shadow-brand-500/30">{{ t('go_download') }}</a>
     </div>
   {% else %}
     {% for label, rows in groups %}
       <section class="mb-8">
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">{{ label }}</h2>
+        <h2 class="text-sm font-800 uppercase tracking-wider text-brand-700 mb-3">{{ label }}</h2>
         <ul class="space-y-2">
           {% for r in rows %}
-            <li class="rounded-2xl border border-slate-200 bg-white p-4 hover:shadow-sm transition" data-row-id="{{ r.id }}">
+            <li class="rounded-2xl border border-brand-100 bg-white p-4 hover:shadow-md hover:shadow-brand-500/10 transition" data-row-id="{{ r.id }}">
               <div class="flex items-start gap-3">
                 <div class="flex-1 min-w-0">
-                  <p class="font-medium truncate max-w-[60ch] text-slate-900" title="{{ r.title or r.url }}">
-                    {{ r.title or r.url }}
-                  </p>
-                  <p class="text-xs text-slate-500 mt-0.5">
+                  <p class="font-700 truncate max-w-[60ch]" title="{{ r.title or r.url }}">{{ r.title or r.url }}</p>
+                  <p class="text-xs text-ink/50 mt-0.5">
                     {{ r.channel or '—' }}
                     {% if r.duration_s %}· {{ (r.duration_s // 60) }}:{{ "%02d"|format(r.duration_s % 60) }}{% endif %}
                     {% if r.file_size_bytes %}· {{ "%.1f"|format(r.file_size_bytes / 1024 / 1024) }} МБ{% endif %}
                   </p>
                 </div>
-                <a href="/file/{{ r.id }}" class="text-brand-700 hover:underline text-sm font-medium" title="Скачать на устройство" download>
-                  ↓
-                </a>
-                {% if not ADMIN_ENABLED or is_admin(request) %}
-                <form
-                  hx-post="/file/{{ r.id }}/delete"
-                  hx-confirm="Удалить «{{ (r.title or r.url) | truncate(40) }}» с сервера? Файл будет стёрт безвозвратно."
-                  hx-target="main"
-                  hx-swap="outerHTML"
-                  hx-select="main"
-                  class="inline-flex">
-                  <button type="submit" class="text-slate-400 hover:text-rose-600 transition" title="Удалить с сервера" aria-label="удалить">
-                    ✕
-                  </button>
+                <a href="/file/{{ r.id }}" class="text-brand-600 hover:underline text-sm font-700" title="{{ t('download_to_device') }}" download>↓</a>
+                <form hx-post="/file/{{ r.id }}/delete"
+                  hx-confirm="{{ t('delete_from_server') }} — «{{ (r.title or r.url) | truncate(40) }}»?"
+                  hx-target="main" hx-swap="outerHTML" hx-select="main" class="inline-flex">
+                  <button type="submit" class="text-ink/30 hover:text-coral transition" title="{{ t('delete_from_server') }}" aria-label="delete">✕</button>
                 </form>
-                {% endif %}
               </div>
               <audio controls preload="none" class="w-full mt-3" src="/file/{{ r.id }}"></audio>
             </li>

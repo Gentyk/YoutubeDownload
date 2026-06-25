@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from yt2mp3 import config, db
+from yt2mp3 import config, db, i18n
 from yt2mp3.helpers import (
     dedup_check,
     extract_urls,
@@ -28,6 +28,7 @@ from yt2mp3.helpers import (
 from yt2mp3.library import group_by_day
 from yt2mp3.logs import setup_logging
 from yt2mp3.queue import JobQueue, QueueFull, cleanup_inactive, cleanup_orphans
+from yt2mp3.sysmon import SysMonitor
 
 log = logging.getLogger("yt2mp3.app")
 
@@ -43,6 +44,9 @@ _queue: JobQueue | None = None
 # Background inactivity-cleanup thread + its stop signal.
 _cleanup_stop: threading.Event | None = None
 _cleanup_thread: threading.Thread | None = None
+
+# CPU/RAM sampler for the admin dashboard.
+_sysmon: SysMonitor | None = None
 
 
 def get_queue() -> JobQueue:
@@ -64,7 +68,7 @@ def _cleanup_loop(stop: threading.Event) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     setup_logging()
-    global _queue, _cleanup_stop, _cleanup_thread
+    global _queue, _cleanup_stop, _cleanup_thread, _sysmon
 
     # First-run hygiene: ffmpeg probe, log warning if missing
     if shutil.which("ffmpeg") is None:
@@ -94,6 +98,9 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
         "inactivity cleanup every %ss (tracks deleted after %s idle days; cap %s/IP)",
         config.CLEANUP_INTERVAL_S, config.INACTIVE_DAYS, config.MAX_TRACKS_PER_IP,
     )
+
+    _sysmon = SysMonitor(interval=config.SYSMON_INTERVAL_S)
+    _sysmon.start()
     if ADMIN_ENABLED:
         mode = "REQUIRED for whole site" if login_required_enabled() else "OPEN (admin panel only)"
         log.info("Admin ENABLED (user=%s); site login: %s", config.AUTH_USER, mode)
@@ -117,6 +124,9 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
             _cleanup_thread.join(timeout=5)
         _cleanup_stop = None
         _cleanup_thread = None
+        if _sysmon is not None:
+            _sysmon.stop()
+        _sysmon = None
         if _queue is not None:
             _queue.shutdown(wait=True, cancel_pending=True)
         _queue = None
@@ -140,7 +150,34 @@ ADMIN_ENABLED = config.ADMIN_ENABLED
 templates.env.globals["ADMIN_ENABLED"] = ADMIN_ENABLED
 
 _OPEN_PATHS = frozenset({"/login", "/logout", "/healthz", "/robots.txt", "/sitemap.xml"})
-_OPEN_PREFIXES = ("/static/",)
+_OPEN_PREFIXES = ("/static/", "/lang/")
+
+# i18n exposed to templates: t('key'), cur_lang(), language lists.
+templates.env.globals["t"] = i18n.t
+templates.env.globals["cur_lang"] = i18n.get_lang
+templates.env.globals["LANGS"] = config.SUPPORTED_LANGS
+templates.env.globals["LANG_NAMES"] = i18n.LANG_NAMES
+templates.env.globals["LANG_FLAGS"] = i18n.LANG_FLAGS
+
+
+class LangMiddleware:
+    """Pick the UI language (cookie > Accept-Language > default) per request."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            headers = dict(scope.get("headers") or [])
+            cookie = headers.get(b"cookie", b"").decode("latin-1")
+            cookie_lang = None
+            for part in cookie.split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == "lang":
+                    cookie_lang = v
+            accept = headers.get(b"accept-language", b"").decode("latin-1")
+            i18n.set_lang(i18n.pick_lang(cookie_lang, accept))
+        await self.app(scope, receive, send)
 
 # In-process cache of the login_required flag; refreshed at startup and on toggle.
 _login_required_cache: bool = False
@@ -183,13 +220,12 @@ templates.env.globals["is_admin"] = _is_admin
 
 
 def _is_admin_only_path(path: str) -> bool:
-    """Paths that always require admin login, regardless of the open/closed toggle."""
-    if path == "/admin" or path.startswith("/admin/"):
-        return True
-    # Destructive: POST /file/{id}/delete
-    if path.startswith("/file/") and path.endswith("/delete"):
-        return True
-    return False
+    """Paths that always require admin login, regardless of the open/closed toggle.
+
+    Note: file delete is NOT here — users may delete their OWN tracks; ownership
+    is enforced in the handler instead.
+    """
+    return path == "/admin" or path.startswith("/admin/")
 
 
 class SecurityHeadersMiddleware:
@@ -265,6 +301,7 @@ class AccessControlMiddleware:
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(LangMiddleware)
 if ADMIN_ENABLED:
     # ORDER MATTERS — middlewares wrap LIFO, so the LAST added runs OUTERMOST.
     # Flow we want: Session populates scope["session"] → AccessControl reads it.
@@ -495,14 +532,15 @@ async def library_recent_fragment(request: Request) -> HTMLResponse:
 async def delete_file(request: Request, row_id: int) -> HTMLResponse:
     """Hard-delete the mp3 from disk, soft-delete the DB row.
 
-    Admin-only (even in open mode). Returns the refreshed `/library` page so
-    HTMX can swap the content.
+    Allowed for the track's owner (matching IP) or an admin. Returns the
+    refreshed `/library` page so HTMX can swap the content.
     """
-    if ADMIN_ENABLED and not _is_admin(request):
-        raise HTTPException(status_code=403, detail="forbidden")
     with db.connect(config.DB_PATH) as conn:
         row = db.get_by_id(conn, row_id)
         if row is None:
+            raise HTTPException(status_code=404, detail="not found")
+        # Ownership: admin can delete anything; a user only their own IP's tracks.
+        if not _is_admin(request) and row["client_ip"] != _client_ip(request):
             raise HTTPException(status_code=404, detail="not found")
         file_path = row["file_path"]
         if file_path:
@@ -642,6 +680,20 @@ async def admin_panel(request: Request) -> Response:
     )
 
 
+@app.get("/api/sysstats")
+async def api_sysstats(request: Request) -> JSONResponse:
+    """Current CPU/RAM + short history. Admin-only (or open when no admin set)."""
+    if ADMIN_ENABLED and not _is_admin(request):
+        raise HTTPException(status_code=403, detail="forbidden")
+    if _sysmon is None:
+        return JSONResponse({"latest": {}, "history": [], "interval_s": config.SYSMON_INTERVAL_S})
+    return JSONResponse({
+        "latest": _sysmon.latest(),
+        "history": _sysmon.history(),
+        "interval_s": config.SYSMON_INTERVAL_S,
+    })
+
+
 @app.post("/admin/toggle-login")
 async def admin_toggle_login(request: Request, enabled: str = Form("")) -> Response:
     """Flip the site-wide login requirement. Admin-only (enforced by middleware)."""
@@ -665,6 +717,16 @@ def _safe_next(next_url: str) -> str:
     if next_url.startswith("//") or next_url.startswith("/\\") or "\\" in next_url:
         return "/"
     return next_url
+
+
+@app.get("/lang/{code}")
+async def set_language(code: str, next: str = "/") -> Response:
+    resp = RedirectResponse(url=_safe_next(next), status_code=303)
+    if code in config.SUPPORTED_LANGS:
+        resp.set_cookie(
+            "lang", code, max_age=365 * 24 * 3600, samesite="lax", httponly=False
+        )
+    return resp
 
 
 @app.get("/healthz")

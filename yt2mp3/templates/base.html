@@ -1,16 +1,14 @@
 <!doctype html>
-<html lang="ru">
+<html lang="{{ cur_lang() }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}yt2mp3 — скачать YouTube в MP3 онлайн{% endblock %}</title>
-<meta name="description" content="{% block meta_description %}yt2mp3 — бесплатно скачать аудио с YouTube в MP3 онлайн: вставь ссылку, получи mp3, слушай прямо на сайте.{% endblock %}">
+<title>{% block title %}yt2mp3 — YouTube → MP3{% endblock %}</title>
+<meta name="description" content="{% block meta_description %}yt2mp3 — скачать аудио с YouTube в MP3 онлайн: вставь ссылку, получи mp3, слушай прямо на сайте.{% endblock %}">
 <meta name="robots" content="index, follow">
-<link rel="canonical" href="{{ request.url._url.split('?')[0] if request else '/' }}">
 <meta property="og:type" content="website">
-<meta property="og:title" content="yt2mp3 — скачать YouTube в MP3">
-<meta property="og:description" content="Вставь ссылку YouTube — получи MP3. Слушай прямо на сайте.">
-<meta name="theme-color" content="#6D28D9">
+<meta property="og:title" content="yt2mp3 — YouTube → MP3">
+<meta name="theme-color" content="#FF8A1E">
 <script src="/static/tailwind.js"></script>
 <script>
   tailwind.config = {
@@ -18,62 +16,65 @@
       extend: {
         colors: {
           brand: {
-            50:  '#F5F3FF',
-            100: '#EDE9FE',
-            200: '#DDD6FE',
-            300: '#C4B5FD',
-            400: '#A78BFA',
-            500: '#8B5CF6',
-            600: '#7C3AED',
-            700: '#6D28D9',  // primary — TD-2
-            800: '#5B21B6',
-            900: '#4C1D95',
+            50:'#FFF4E2',100:'#FFE7DE',200:'#FFD9B0',300:'#FFBE2E',400:'#FF9E45',
+            500:'#FF8A1E',600:'#F0760A',700:'#C8791E',800:'#9A4E12',900:'#5C2E0C',
           },
+          coral:'#FF5A5F',
+          cream:'#FFF4E2',
+          ink:'#2A1A12',
         },
         fontFamily: {
-          sans: ['Inter', 'system-ui', 'sans-serif'],
-          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          display: ['Fredoka','system-ui','sans-serif'],
+          sans: ['Nunito','system-ui','-apple-system','sans-serif'],
         },
-        borderRadius: { '2xl': '1rem' },
+        borderRadius: { '2xl':'1.25rem', '3xl':'1.75rem' },
       },
     },
   };
 </script>
-<link rel="preconnect" href="https://rsms.me/">
-<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-  .tabular-nums { font-variant-numeric: tabular-nums; }
-  .focus-ring:focus { outline: none; box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.35); }
-  /* waveform hero chart — see TD-1 */
-  .waveform-bar { transition: transform 200ms ease-out; transform-origin: bottom; }
+  body { font-family:'Nunito',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,.font-display { font-family:'Fredoka',system-ui,sans-serif; }
+  .focus-ring:focus { outline:none; box-shadow:0 0 0 4px rgba(255,138,30,.30); }
+  .hero-grad { background:linear-gradient(135deg,#FFF4E2 0%,#FFE7DE 55%,#FFD9B0 100%); }
 </style>
 <script src="/static/htmx.min.js" defer></script>
 <script src="/static/htmx-idiomorph.min.js" defer></script>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen">
-<header class="border-b border-slate-200 bg-white/80 backdrop-blur sticky top-0 z-10">
-  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+<body class="bg-cream text-ink min-h-screen">
+<header class="sticky top-0 z-10 border-b border-brand-200/70 bg-cream/85 backdrop-blur">
+  <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-3">
     <a href="/" class="flex items-center gap-2 group">
-      <span class="inline-flex w-9 h-9 rounded-full bg-brand-700 text-white items-center justify-center font-bold tracking-tight">
-        ▶
-      </span>
-      <span class="text-lg font-semibold tracking-tight">yt2mp3</span>
+      <span class="inline-flex w-10 h-10 rounded-2xl bg-brand-500 text-white items-center justify-center text-lg shadow-sm group-hover:scale-105 transition">▶</span>
+      <span class="text-xl font-display font-700 tracking-tight">yt2mp3</span>
     </a>
-    <nav class="flex items-center gap-4 text-sm font-medium">
-      <a href="/" class="text-slate-700 hover:text-brand-700 transition">Скачать</a>
-      <a href="/library" class="text-slate-700 hover:text-brand-700 transition">Загружено</a>
-      <a href="/stats" class="text-slate-700 hover:text-brand-700 transition">Статистика</a>
+    <nav class="flex items-center gap-1 sm:gap-4 text-sm font-700">
+      <a href="/" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_download') }}</a>
+      <a href="/library" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_library') }}</a>
+      <a href="/stats" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_stats') }}</a>
       {% if is_admin(request) %}
-        <a href="/admin" class="text-slate-700 hover:text-brand-700 transition">Админ</a>
-        <form method="post" action="/logout" class="inline-flex">
-          <button type="submit" class="text-slate-400 hover:text-rose-600 transition" title="Выйти">
-            Выйти
-          </button>
-        </form>
+        <a href="/admin" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_admin') }}</a>
+        <form method="post" action="/logout" class="inline-flex"><button class="px-2 py-1 rounded-lg text-coral hover:bg-coral/10 transition">{{ t('nav_logout') }}</button></form>
       {% elif ADMIN_ENABLED and request.url.path != '/login' %}
-        <a href="/login" class="text-slate-400 hover:text-brand-700 transition" title="Вход для админа">Войти</a>
+        <a href="/login" class="px-2 py-1 rounded-lg text-ink/50 hover:text-brand-700 transition">{{ t('nav_login') }}</a>
       {% endif %}
+      <!-- language switcher -->
+      <div class="relative group ml-1">
+        <button class="px-2 py-1 rounded-lg hover:bg-brand-100 transition flex items-center gap-1" aria-label="language">
+          <span>{{ LANG_FLAGS[cur_lang()] }}</span><span class="hidden sm:inline">{{ cur_lang()|upper }}</span>
+        </button>
+        <div class="absolute right-0 mt-1 hidden group-hover:block bg-white rounded-xl shadow-lg border border-brand-100 py-1 min-w-[9rem] z-20">
+          {% for code in LANGS %}
+            <a href="/lang/{{ code }}?next={{ request.url.path }}"
+               class="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-brand-50 {{ 'text-brand-700 font-700' if code == cur_lang() else '' }}">
+              <span>{{ LANG_FLAGS[code] }}</span> {{ LANG_NAMES[code] }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
     </nav>
   </div>
 </header>
@@ -82,12 +83,11 @@
   {% block content %}{% endblock %}
 </main>
 
-<footer class="max-w-6xl mx-auto px-6 py-8 text-xs text-slate-400">
-  yt2mp3 — личный архив. Видны только треки, скачанные с твоего устройства.
+<footer class="max-w-6xl mx-auto px-6 py-8 text-xs text-ink/40">
+  {{ t('footer') }}
 </footer>
 <script>
-  // Только один трек играет за раз: при старте любого <audio> остальные ставим на паузу.
-  // Делегирование на document + capture, чтобы работало и для элементов, добавленных HTMX.
+  // Только один трек играет за раз: при старте любого медиа остальные на паузу.
   document.addEventListener('play', function (e) {
     if (!(e.target instanceof HTMLMediaElement)) return;
     document.querySelectorAll('audio, video').forEach(function (m) {

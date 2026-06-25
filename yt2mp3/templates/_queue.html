@@ -1,39 +1,32 @@
 {% if not jobs %}
-  <p class="text-sm text-slate-400">Пока пусто.</p>
+  <p class="text-sm text-ink/40">{{ t('queue_empty') }}</p>
 {% else %}
   <ul class="space-y-2">
     {% for j in jobs %}
-      <li class="rounded-xl border border-slate-200 px-3 py-2 flex items-center gap-3"
-          data-job-id="{{ j.job_id }}">
+      <li class="rounded-2xl border border-brand-100 bg-brand-50/40 px-3 py-2 flex items-center gap-3" data-job-id="{{ j.job_id }}">
         <span class="flex-1 truncate max-w-[40ch] text-sm font-mono">
-          {% if j.result and j.result.title %}{{ j.result.title }}
-          {% else %}{{ j.url }}
-          {% endif %}
+          {% if j.result and j.result.title %}{{ j.result.title }}{% else %}{{ j.url }}{% endif %}
         </span>
         {% if j.state == 'queued' %}
-          <span class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">в очереди</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-brand-100 text-ink/60">{{ t('q_queued') }}</span>
         {% elif j.state == 'downloading' %}
-          <span class="text-xs px-2 py-0.5 rounded-full bg-brand-100 text-brand-800">качаем
+          <span class="text-xs px-2 py-0.5 rounded-full bg-brand-200 text-brand-800">{{ t('q_downloading') }}
             {% if j.progress.get('downloaded_bytes') and j.progress.get('total_bytes') %}
               · {{ ((j.progress['downloaded_bytes'] / j.progress['total_bytes']) * 100) | round(0) }}%
             {% endif %}
           </span>
         {% elif j.state == 'converting' %}
-          <span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">конвертируем</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-brand-300/60 text-brand-900">{{ t('q_converting') }}</span>
         {% elif j.state == 'done' %}
-          <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">готово</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{{ t('q_done') }}</span>
         {% elif j.state == 'failed' %}
-          <span class="text-xs px-2 py-0.5 rounded-full bg-rose-100 text-rose-800" title="{{ j.result.error if j.result else '' }}">ошибка</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-coral/15 text-coral" title="{{ j.result.error if j.result else '' }}">{{ t('q_failed') }}</span>
         {% elif j.state == 'cancelled' %}
-          <span class="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">отменено</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-brand-100 text-ink/50">{{ t('q_cancelled') }}</span>
         {% endif %}
         {% if j.state in ('queued', 'downloading', 'converting') %}
-          <button
-            hx-post="/cancel/{{ j.job_id }}"
-            hx-target="#queue"
-            hx-swap="innerHTML"
-            class="text-xs text-slate-400 hover:text-rose-600"
-            aria-label="отменить">×</button>
+          <button hx-post="/cancel/{{ j.job_id }}" hx-target="#queue" hx-swap="innerHTML"
+            class="text-xs text-ink/30 hover:text-coral" aria-label="cancel">×</button>
         {% endif %}
       </li>
     {% endfor %}

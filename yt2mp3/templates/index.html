@@ -1,88 +1,57 @@
 {% extends "base.html" %}
-{% block title %}yt2mp3 — Скачать{% endblock %}
+{% block title %}yt2mp3 — {{ t('nav_download') }}{% endblock %}
 
 {% block content %}
+<section class="hero-grad -mx-6 -mt-10 px-6 pt-12 pb-10 rounded-b-3xl mb-8">
+  <div class="max-w-3xl mx-auto text-center">
+    <h1 class="text-4xl sm:text-5xl font-700 tracking-tight">
+      {{ t('hero_title') }}
+    </h1>
+    <p class="mt-3 text-ink/70 max-w-prose mx-auto">{{ t('hero_sub') }}</p>
+
+    <form method="post" action="/download" hx-post="/download" hx-target="#form-result"
+          hx-swap="innerHTML" hx-disabled-elt="#submit-btn, textarea" class="mt-7 text-left">
+      <div class="rounded-3xl bg-white shadow-lg shadow-brand-500/10 border border-brand-100 p-3">
+        <textarea name="urls" rows="3" required autofocus
+          placeholder="{{ t('form_placeholder') }}"
+          class="w-full rounded-2xl bg-brand-50/60 p-4 font-mono text-sm leading-6 focus-ring resize-none"
+          onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){this.form.requestSubmit();}"></textarea>
+        <div class="flex flex-wrap items-center justify-between gap-3 px-1 pt-2">
+          <div class="flex flex-wrap items-center gap-4 text-xs text-ink/70">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" name="force" value="1" class="rounded text-brand-500 focus-ring"> {{ t('force_label') }}
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" name="allow_playlist" value="1" class="rounded text-brand-500 focus-ring"> {{ t('playlist_label') }}
+            </label>
+          </div>
+          <button id="submit-btn" type="submit"
+            class="inline-flex items-center gap-2 rounded-full bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white font-800 px-7 py-3 shadow-md shadow-brand-500/30 transition focus-ring disabled:opacity-50">
+            {{ t('submit') }} <span class="htmx-indicator inline-block animate-spin">⏳</span>
+          </button>
+        </div>
+      </div>
+      <p class="mt-2 text-center text-xs text-ink/40">{{ t('form_hint') }}</p>
+    </form>
+  </div>
+</section>
+
 <section class="grid grid-cols-1 lg:grid-cols-5 gap-8">
   <div class="lg:col-span-3">
-    <h1 class="text-4xl font-bold tracking-tight text-slate-900">
-      Вставь ссылки <span class="text-brand-700">— получи mp3.</span>
-    </h1>
-    <p class="mt-3 text-slate-600 max-w-prose">
-      Поддерживаются YouTube ссылки в любом виде — через запятую, пробел, перенос строки.
-      Имя файла = название видео.
-    </p>
-
-    <form
-      method="post"
-      action="/download"
-      hx-post="/download"
-      hx-target="#form-result"
-      hx-swap="innerHTML"
-      hx-disabled-elt="#submit-btn, textarea"
-      class="mt-6 space-y-4"
-    >
-      <label class="block">
-        <span class="sr-only">URLs</span>
-        <textarea
-          name="urls"
-          rows="6"
-          required
-          autofocus
-          placeholder="https://www.youtube.com/watch?v=…&#10;https://youtu.be/…"
-          class="w-full rounded-2xl border border-slate-300 bg-white p-4 font-mono text-sm leading-6 focus-ring"
-          onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){this.form.requestSubmit();}"
-        ></textarea>
-        <p class="mt-1 text-xs text-slate-400">⌘+Enter — отправить.</p>
-      </label>
-
-      <div class="flex items-center gap-6 text-sm">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" name="force" value="1" class="rounded border-slate-300 text-brand-700 focus-ring">
-          <span>Скачать заново, даже если уже есть</span>
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" name="allow_playlist" value="1" class="rounded border-slate-300 text-brand-700 focus-ring">
-          <span>Разворачивать плейлист целиком</span>
-        </label>
-      </div>
-
-      <div class="flex items-center gap-3">
-        <button
-          id="submit-btn"
-          type="submit"
-          class="inline-flex items-center gap-2 rounded-full bg-brand-700 hover:bg-brand-800 active:bg-brand-900 text-white font-semibold px-6 py-3 transition focus-ring disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Скачать
-          <span class="htmx-indicator inline-block animate-spin">⏳</span>
-        </button>
-        <a href="/stats" class="text-sm text-slate-500 hover:text-brand-700">Смотреть статистику →</a>
-      </div>
-    </form>
-
-    <div id="form-result" class="mt-6"></div>
-
-    <!-- morph swap (not innerHTML) so a playing <audio> isn't destroyed every 5s.
-         idiomorph preserves nodes whose id is unchanged → playback continues. -->
+    <div id="form-result"></div>
     <div id="recent" hx-get="/library/fragment" hx-trigger="load, every 5s"
-         hx-swap="morph:innerHTML" hx-ext="morph" class="mt-6"></div>
+         hx-swap="morph:innerHTML" hx-ext="morph"></div>
   </div>
 
   <aside class="lg:col-span-2">
-    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div class="rounded-3xl border border-brand-100 bg-white p-5 shadow-sm">
       <div class="flex items-center justify-between">
-        <h2 class="font-semibold tracking-tight">Очередь</h2>
-        <span class="text-xs text-slate-400">обновляется каждые 2с</span>
+        <h2 class="font-700 tracking-tight">{{ t('queue_title') }}</h2>
+        <span class="text-xs text-ink/40">{{ t('queue_updates') }}</span>
       </div>
-      <div
-        id="queue"
-        hx-get="/queue"
-        hx-trigger="load, every 2s"
-        hx-swap="innerHTML"
-        hx-ext="morph"
-        aria-live="polite"
-        class="mt-4 min-h-[6rem]"
-      >
-        <p class="text-sm text-slate-400">Пока пусто.</p>
+      <div id="queue" hx-get="/queue" hx-trigger="load, every 2s" hx-swap="innerHTML"
+           hx-ext="morph" aria-live="polite" class="mt-4 min-h-[6rem]">
+        <p class="text-sm text-ink/40">{{ t('queue_empty') }}</p>
       </div>
     </div>
   </aside>

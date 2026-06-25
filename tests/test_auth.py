@@ -84,14 +84,23 @@ def test_toggle_persists_across_restart(monkeypatch, tmp_db_path, tmp_download_d
         assert c2.get("/", follow_redirects=False).status_code == 303
 
 
-def test_delete_is_admin_only(monkeypatch, tmp_db_path, tmp_download_dir):
-    """Even in open mode, deleting a file requires the admin session."""
+def test_delete_requires_ownership_or_admin(monkeypatch, tmp_db_path, tmp_download_dir):
+    """A non-owner can't delete someone else's track; an admin can."""
+    from yt2mp3 import db
+
     app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
+    with db.connect(tmp_db_path) as conn:
+        conn.execute(
+            "INSERT INTO downloads (url, status, client_ip) "
+            "VALUES ('u', 'success', '9.9.9.9')"
+        )
+        rid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     with TestClient(app) as c:
-        # Open site, but delete redirects to login for anonymous users.
-        r = c.post("/file/1/delete", follow_redirects=False)
-        assert r.status_code == 303
-        assert r.headers["location"].startswith("/login")
+        # anonymous viewer (IP 'testclient') can't touch 9.9.9.9's track
+        assert c.post(f"/file/{rid}/delete").status_code == 404
+        # admin can
+        c.post("/login", data={"username": "vlad", "password": "s3cret"})
+        assert c.post(f"/file/{rid}/delete", follow_redirects=False).status_code == 200
 
 
 def test_security_headers_present(monkeypatch, tmp_db_path, tmp_download_dir):
