@@ -8,6 +8,7 @@ already in the DB.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 import uuid
@@ -21,6 +22,56 @@ from yt2mp3 import config, db, downloader
 from yt2mp3.downloader import Result
 
 log = logging.getLogger(__name__)
+
+_IP_DIR_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def ip_dirname(client_ip: str | None) -> str:
+    """Filesystem-safe per-IP subdir name (keeps each IP's files isolated)."""
+    return _IP_DIR_RE.sub("_", client_ip) if client_ip else "_unknown"
+
+
+def _safe_unlink(file_path: str | None, root: Path) -> None:
+    """Delete a file only if it lives inside ``root`` (defence-in-depth)."""
+    if not file_path:
+        return
+    p = Path(file_path).resolve()
+    try:
+        p.relative_to(Path(root).resolve())
+    except ValueError:
+        log.warning("refusing to unlink outside download dir: %s", p)
+        return
+    if p.exists():
+        try:
+            p.unlink()
+        except OSError:
+            log.exception("unlink failed for %s", p)
+
+
+def purge_rows(db_path: Path | str, download_dir: Path | str, rows: list) -> int:
+    """Soft-delete the given rows and unlink their files. Returns count removed."""
+    n = 0
+    with db.connect(db_path) as conn:
+        for r in rows:
+            _safe_unlink(r["file_path"], Path(download_dir))
+            if db.soft_delete(conn, int(r["id"])):
+                n += 1
+    return n
+
+
+def cleanup_inactive(
+    db_path: Path | str, download_dir: Path | str, days: int = config.INACTIVE_DAYS
+) -> int:
+    """Delete all tracks belonging to IPs inactive for >= ``days`` days."""
+    with db.connect(db_path) as conn:
+        ips = db.inactive_ips_with_tracks(conn, days)
+        rows: list = []
+        for ip in ips:
+            rows.extend(db.get_library_rows(conn, client_ip=ip))
+    removed = purge_rows(db_path, download_dir, rows) if rows else 0
+    if removed:
+        log.info("inactivity cleanup: removed %s tracks from %s IP(s)", removed, len(ips))
+    return removed
 
 
 @dataclass
@@ -141,7 +192,9 @@ class JobQueue:
         try:
             result = downloader.download(
                 url=job.url,
-                download_dir=self._download_dir,
+                # Each IP gets its own subdir so files never collide across users
+                # and per-IP eviction can't delete someone else's track.
+                download_dir=self._download_dir / ip_dirname(job.client_ip),
                 cancel=job.cancel_event,
                 progress_state=job.progress,
                 yes_playlist=yes_playlist,
@@ -160,9 +213,28 @@ class JobQueue:
                 job.state = "failed"
 
         self._persist_terminal(job, result)
+        if result.status == "success":
+            self._enforce_ip_cap(job.client_ip)
         # Keep terminal jobs visible for a short window so the UI can render
         # the "done"/"failed" transition before it disappears.
         self._remove_after_grace(job)
+
+    def _enforce_ip_cap(self, client_ip: str | None) -> None:
+        """Keep only the newest ``MAX_TRACKS_PER_IP`` tracks for this IP."""
+        if not client_ip:
+            return
+        cap = config.MAX_TRACKS_PER_IP
+        try:
+            with db.connect(self._db_path) as conn:
+                n = db.count_active_by_ip(conn, client_ip)
+                if n <= cap:
+                    return
+                victims = db.oldest_active_by_ip(conn, client_ip, n - cap)
+            removed = purge_rows(self._db_path, self._download_dir, victims)
+            if removed:
+                log.info("ip cap: evicted %s oldest track(s) for ip=%s", removed, client_ip)
+        except Exception:
+            log.exception("ip cap enforcement failed for ip=%s", client_ip)
 
     def _persist_terminal(self, job: Job, result: Result) -> None:
         # Single critical section: insert into DB. We don't hold self._lock here
@@ -220,7 +292,8 @@ def cleanup_orphans(download_dir: Path | str) -> int:
         return 0
     removed = 0
     for pattern in ("*.part", "*.m4a.part", "*.webm.part", "*.tmp"):
-        for f in p.glob(pattern):
+        # rglob: files now live in per-IP subdirs.
+        for f in p.rglob(pattern):
             try:
                 f.unlink()
                 removed += 1

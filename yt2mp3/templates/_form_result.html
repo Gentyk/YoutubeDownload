@@ -35,6 +35,12 @@
   {% endfor %}
 {% endif %}
 
+{% if evict_warning %}
+  <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 mb-3">
+    ⚠️ {{ evict_warning }}
+  </div>
+{% endif %}
+
 {% if submitted %}
   <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 mb-3">
     Добавлено в очередь: <span class="font-semibold">{{ submitted|length }}</span>

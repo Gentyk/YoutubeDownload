@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import secrets
 import shutil
+import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -26,7 +27,7 @@ from yt2mp3.helpers import (
 )
 from yt2mp3.library import group_by_day
 from yt2mp3.logs import setup_logging
-from yt2mp3.queue import JobQueue, QueueFull, cleanup_orphans
+from yt2mp3.queue import JobQueue, QueueFull, cleanup_inactive, cleanup_orphans
 
 log = logging.getLogger("yt2mp3.app")
 
@@ -39,6 +40,10 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # Module-level singleton; created in lifespan so test reload picks up env vars.
 _queue: JobQueue | None = None
 
+# Background inactivity-cleanup thread + its stop signal.
+_cleanup_stop: threading.Event | None = None
+_cleanup_thread: threading.Thread | None = None
+
 
 def get_queue() -> JobQueue:
     if _queue is None:
@@ -46,10 +51,20 @@ def get_queue() -> JobQueue:
     return _queue
 
 
+def _cleanup_loop(stop: threading.Event) -> None:
+    """Periodically delete tracks of IPs inactive for INACTIVE_DAYS days."""
+    while not stop.is_set():
+        try:
+            cleanup_inactive(config.DB_PATH, config.DOWNLOAD_DIR, config.INACTIVE_DAYS)
+        except Exception:
+            log.exception("inactivity cleanup loop error")
+        stop.wait(config.CLEANUP_INTERVAL_S)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     setup_logging()
-    global _queue
+    global _queue, _cleanup_stop, _cleanup_thread
 
     # First-run hygiene: ffmpeg probe, log warning if missing
     if shutil.which("ffmpeg") is None:
@@ -68,6 +83,17 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
         download_dir=config.DOWNLOAD_DIR,
     )
     log.info("queue started: max_workers=%s max_size=%s", config.MAX_CONCURRENT, config.MAX_QUEUE_SIZE)
+
+    # Background sweep: drop tracks of IPs inactive for INACTIVE_DAYS days.
+    _cleanup_stop = threading.Event()
+    _cleanup_thread = threading.Thread(
+        target=_cleanup_loop, args=(_cleanup_stop,), name="yt2mp3-cleanup", daemon=True
+    )
+    _cleanup_thread.start()
+    log.info(
+        "inactivity cleanup every %ss (tracks deleted after %s idle days; cap %s/IP)",
+        config.CLEANUP_INTERVAL_S, config.INACTIVE_DAYS, config.MAX_TRACKS_PER_IP,
+    )
     if ADMIN_ENABLED:
         mode = "REQUIRED for whole site" if login_required_enabled() else "OPEN (admin panel only)"
         log.info("Admin ENABLED (user=%s); site login: %s", config.AUTH_USER, mode)
@@ -85,6 +111,12 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
         yield
     finally:
         log.info("shutting down queue")
+        if _cleanup_stop is not None:
+            _cleanup_stop.set()
+        if _cleanup_thread is not None:
+            _cleanup_thread.join(timeout=5)
+        _cleanup_stop = None
+        _cleanup_thread = None
         if _queue is not None:
             _queue.shutdown(wait=True, cancel_pending=True)
         _queue = None
@@ -107,7 +139,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 ADMIN_ENABLED = config.ADMIN_ENABLED
 templates.env.globals["ADMIN_ENABLED"] = ADMIN_ENABLED
 
-_OPEN_PATHS = frozenset({"/login", "/logout", "/healthz"})
+_OPEN_PATHS = frozenset({"/login", "/logout", "/healthz", "/robots.txt", "/sitemap.xml"})
 _OPEN_PREFIXES = ("/static/",)
 
 # In-process cache of the login_required flag; refreshed at startup and on toggle.
@@ -273,6 +305,7 @@ def _record_login_fail(ip: str | None) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
+    _touch_current_ip(request)
     return templates.TemplateResponse(request, "index.html", {"queue": []})
 
 
@@ -292,6 +325,30 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+# Sentinel IP that matches no DB row — used so a viewer with an unknown IP sees
+# nothing (rather than everything).
+_NO_MATCH_IP = "\x00no-ip"
+
+
+def _scope_ip(request: Request) -> str | None:
+    """IP to scope track visibility to. ``None`` = see all (admin only)."""
+    if _is_admin(request):
+        return None
+    return _client_ip(request) or _NO_MATCH_IP
+
+
+def _touch_current_ip(request: Request) -> None:
+    """Record the viewer's IP as active (for inactivity-based cleanup)."""
+    ip = _client_ip(request)
+    if not ip:
+        return
+    try:
+        with db.connect(config.DB_PATH) as conn:
+            db.touch_ip(conn, ip)
+    except Exception:
+        log.exception("touch_ip failed")
+
+
 @app.post("/download", response_class=HTMLResponse)
 async def post_download(
     request: Request,
@@ -302,6 +359,8 @@ async def post_download(
     q = get_queue()
     force_flag = bool(force)
     allow_playlist_flag = bool(allow_playlist)
+    client_ip = _client_ip(request)
+    _touch_current_ip(request)
 
     raw = extract_urls(urls)
     youtube_urls = filter_youtube(raw)
@@ -346,7 +405,9 @@ async def post_download(
             errors.append(f"Не разобрал video_id из {url}")
             continue
 
-        decision = dedup_check(config.DB_PATH, video_id, force=force_flag)
+        decision = dedup_check(
+            config.DB_PATH, video_id, force=force_flag, client_ip=client_ip
+        )
         if decision.action == "skip":
             skipped.append({
                 "url": url,
@@ -360,7 +421,7 @@ async def post_download(
                 url,
                 force=force_flag,
                 yes_playlist=allow_playlist_flag,
-                client_ip=_client_ip(request),
+                client_ip=client_ip,
             )
         except QueueFull:
             return templates.TemplateResponse(
@@ -371,6 +432,19 @@ async def post_download(
             )
         submitted.append({"job_id": job_id, "url": url, "video_id": video_id})
 
+    # Per-IP rolling limit: warn when these submissions will evict oldest tracks.
+    evict_warning: str | None = None
+    if client_ip and submitted:
+        cap = config.MAX_TRACKS_PER_IP
+        with db.connect(config.DB_PATH) as conn:
+            existing = db.count_active_by_ip(conn, client_ip)
+        overflow = existing + len(submitted) - cap
+        if overflow > 0:
+            evict_warning = (
+                f"Лимит — {cap} треков на устройство. После загрузки будут удалены "
+                f"{overflow} самых старых."
+            )
+
     return templates.TemplateResponse(
         request,
         "_form_result.html",
@@ -379,6 +453,8 @@ async def post_download(
             "skipped": skipped,
             "playlists": playlists,
             "errors": errors,
+            "evict_warning": evict_warning,
+            "max_per_ip": config.MAX_TRACKS_PER_IP,
             "jobs": get_queue().snapshot(),
         },
     )
@@ -393,8 +469,9 @@ async def post_cancel(request: Request, job_id: str) -> HTMLResponse:
 
 @app.get("/library", response_class=HTMLResponse)
 async def library_page(request: Request) -> HTMLResponse:
+    _touch_current_ip(request)
     with db.connect(config.DB_PATH) as conn:
-        rows = [dict(r) for r in db.get_library_rows(conn)]
+        rows = [dict(r) for r in db.get_library_rows(conn, client_ip=_scope_ip(request))]
     groups = group_by_day(rows)
     return templates.TemplateResponse(
         request,
@@ -405,9 +482,12 @@ async def library_page(request: Request) -> HTMLResponse:
 
 @app.get("/library/fragment", response_class=HTMLResponse)
 async def library_recent_fragment(request: Request) -> HTMLResponse:
-    """Mini-panel on `/` — last 5 successful downloads."""
+    """Mini-panel on `/` — last 5 successful downloads for this viewer's IP."""
     with db.connect(config.DB_PATH) as conn:
-        rows = [dict(r) for r in db.get_recent_successful(conn, limit=5)]
+        rows = [
+            dict(r)
+            for r in db.get_recent_successful(conn, limit=5, client_ip=_scope_ip(request))
+        ]
     return templates.TemplateResponse(request, "_library_recent.html", {"rows": rows})
 
 
@@ -444,9 +524,11 @@ async def delete_file(request: Request, row_id: int) -> HTMLResponse:
 
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_page(request: Request) -> HTMLResponse:
+    _touch_current_ip(request)
     with db.connect(config.DB_PATH) as conn:
         kpi = db.kpi_totals(conn)
-        recent = [dict(r) for r in db.get_recent(conn, limit=20)]
+        # Recent list shows track titles → scope to the viewer's own IP.
+        recent = [dict(r) for r in db.get_recent(conn, limit=20, client_ip=_scope_ip(request))]
     return templates.TemplateResponse(
         request,
         "stats.html",
@@ -471,10 +553,14 @@ async def api_stats(request: Request) -> JSONResponse:
 
 
 @app.get("/file/{row_id}")
-async def get_file(row_id: int) -> Response:
+async def get_file(request: Request, row_id: int) -> Response:
     with db.connect(config.DB_PATH) as conn:
         row = db.get_by_id(conn, row_id)
     if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    # Per-IP isolation: you can only fetch files you downloaded (admin sees all).
+    scope = _scope_ip(request)
+    if scope is not None and row["client_ip"] != scope:
         raise HTTPException(status_code=404, detail="not found")
     file_path = row["file_path"]
     if not file_path:
@@ -589,3 +675,34 @@ async def healthz() -> dict:
         "downloads": str(config.DOWNLOAD_DIR),
         "now": datetime.now(UTC).isoformat(timespec="seconds"),
     }
+
+
+# --- SEO: let search engines crawl the public landing -----------------------
+
+@app.get("/robots.txt")
+async def robots_txt(request: Request) -> Response:
+    base = str(request.base_url).rstrip("/")
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        # Per-IP/admin areas have nothing crawlable; keep them out of the index.
+        "Disallow: /admin\n"
+        "Disallow: /login\n"
+        "Disallow: /file/\n"
+        "Disallow: /api/\n"
+        f"Sitemap: {base}/sitemap.xml\n"
+    )
+    return Response(content=body, media_type="text/plain")
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml(request: Request) -> Response:
+    base = str(request.base_url).rstrip("/")
+    paths = ["/", "/stats"]
+    urls = "".join(f"<url><loc>{base}{p}</loc></url>" for p in paths)
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"{urls}</urlset>"
+    )
+    return Response(content=body, media_type="application/xml")

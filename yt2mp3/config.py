@@ -67,3 +67,13 @@ YOUTUBE_HOSTS = frozenset(
 VIDEO_ID_RE = r"^[A-Za-z0-9_-]{11}$"
 
 MIN_QUEUE_DISPLAY_MS = 800  # UX: keep "Downloading" visible at least this long
+
+# Per-IP rolling library: each IP keeps at most this many tracks; older ones are
+# auto-removed when new downloads push past the limit.
+MAX_TRACKS_PER_IP = int(os.environ.get("YT2MP3_MAX_TRACKS_PER_IP", "20"))
+
+# Tracks of an IP that hasn't visited the site for this many days are auto-deleted.
+INACTIVE_DAYS = int(os.environ.get("YT2MP3_INACTIVE_DAYS", "3"))
+
+# How often the background inactivity sweep runs (seconds).
+CLEANUP_INTERVAL_S = int(os.environ.get("YT2MP3_CLEANUP_INTERVAL_S", str(3600)))

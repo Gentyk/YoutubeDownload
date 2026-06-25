@@ -55,10 +55,10 @@ def test_library_empty_state(client):
 def test_library_groups_by_day(client, tmp_db_path: Path):
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, video_id, title, status, finished_at, file_path) "
-            "VALUES (?, ?, ?, 'success', datetime('now'), 'a.mp3'), "
-            "       (?, ?, ?, 'success', datetime('now', '-1 day'), 'b.mp3'), "
-            "       (?, ?, ?, 'success', datetime('now', '-5 days'), 'c.mp3')",
+            "INSERT INTO downloads (url, video_id, title, status, finished_at, file_path, client_ip) "
+            "VALUES (?, ?, ?, 'success', datetime('now'), 'a.mp3', 'testclient'), "
+            "       (?, ?, ?, 'success', datetime('now', '-1 day'), 'b.mp3', 'testclient'), "
+            "       (?, ?, ?, 'success', datetime('now', '-5 days'), 'c.mp3', 'testclient')",
             (
                 "https://youtu.be/aaaaaaaaaaaa", "aaaaaaaaaaa1", "Today track",
                 "https://youtu.be/bbbbbbbbbbbb", "bbbbbbbbbbb2", "Yesterday track",
@@ -89,8 +89,8 @@ def test_library_fragment_returns_recent_5(client, tmp_db_path: Path):
     with db.connect(tmp_db_path) as conn:
         for i in range(7):
             conn.execute(
-                "INSERT INTO downloads (url, video_id, title, status, finished_at, file_path) "
-                "VALUES (?, ?, ?, 'success', datetime('now', ?), ?)",
+                "INSERT INTO downloads (url, video_id, title, status, finished_at, file_path, client_ip) "
+                "VALUES (?, ?, ?, 'success', datetime('now', ?), ?, 'testclient')",
                 (
                     f"https://youtu.be/zz{i:09d}",
                     f"zz{i:09d}",
@@ -149,8 +149,8 @@ def test_client_ip_falls_back_to_request_client(client, monkeypatch):
 def test_stats_no_longer_links_to_files(client, tmp_db_path: Path):
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, title, status, file_path, finished_at) "
-            "VALUES (?, 'show me', 'success', 'a.mp3', datetime('now'))",
+            "INSERT INTO downloads (url, title, status, file_path, finished_at, client_ip) "
+            "VALUES (?, 'show me', 'success', 'a.mp3', datetime('now'), 'testclient')",
             ("https://youtu.be/dQw4w9WgXcQ",),
         )
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]

@@ -54,10 +54,19 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+# Per-IP last-seen, for auto-deleting tracks of IPs that stop visiting.
+SCHEMA_V4 = """
+CREATE TABLE IF NOT EXISTS ip_activity (
+    ip        TEXT PRIMARY KEY,
+    last_seen TIMESTAMP
+);
+"""
+
 MIGRATIONS: list[tuple[int, str]] = [
     (1, SCHEMA_V1),
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
+    (4, SCHEMA_V4),
 ]
 
 
@@ -123,36 +132,75 @@ def update_download(conn: sqlite3.Connection, row_id: int, **fields: Any) -> Non
 
 # --- read path --------------------------------------------------------------
 
-def get_recent(conn: sqlite3.Connection, limit: int = 20) -> list[sqlite3.Row]:
-    return list(
-        conn.execute(
-            "SELECT * FROM downloads ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?",
-            (limit,),
-        )
-    )
+def get_recent(
+    conn: sqlite3.Connection, limit: int = 20, client_ip: str | None = None
+) -> list[sqlite3.Row]:
+    sql = "SELECT * FROM downloads"
+    params: list[Any] = []
+    if client_ip is not None:
+        sql += " WHERE client_ip=?"
+        params.append(client_ip)
+    sql += " ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?"
+    params.append(limit)
+    return list(conn.execute(sql, params))
 
 
-def get_library_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    """All successful, non-deleted downloads — newest first."""
-    return list(
-        conn.execute(
-            "SELECT * FROM downloads "
-            "WHERE status='success' AND deleted_at IS NULL "
-            "ORDER BY COALESCE(finished_at, started_at) DESC, id DESC"
-        )
-    )
+def get_library_rows(
+    conn: sqlite3.Connection, client_ip: str | None = None
+) -> list[sqlite3.Row]:
+    """Successful, non-deleted downloads — newest first.
+
+    ``client_ip`` scopes results to one IP (a viewer sees only their own tracks).
+    Pass ``None`` to see everything (admin).
+    """
+    sql = "SELECT * FROM downloads WHERE status='success' AND deleted_at IS NULL"
+    params: list[Any] = []
+    if client_ip is not None:
+        sql += " AND client_ip=?"
+        params.append(client_ip)
+    sql += " ORDER BY COALESCE(finished_at, started_at) DESC, id DESC"
+    return list(conn.execute(sql, params))
 
 
 def get_recent_successful(
-    conn: sqlite3.Connection, limit: int = 5
+    conn: sqlite3.Connection, limit: int = 5, client_ip: str | None = None
 ) -> list[sqlite3.Row]:
-    """Most recent N successful, non-deleted downloads — for mini-panel."""
+    """Most recent N successful, non-deleted downloads — for mini-panel.
+
+    ``client_ip`` scopes results to one IP; ``None`` = all (admin).
+    """
+    sql = "SELECT * FROM downloads WHERE status='success' AND deleted_at IS NULL"
+    params: list[Any] = []
+    if client_ip is not None:
+        sql += " AND client_ip=?"
+        params.append(client_ip)
+    sql += " ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?"
+    params.append(limit)
+    return list(conn.execute(sql, params))
+
+
+def count_active_by_ip(conn: sqlite3.Connection, client_ip: str) -> int:
+    """How many active (success, non-deleted) tracks an IP currently has."""
+    row = conn.execute(
+        "SELECT COUNT(*) AS n FROM downloads "
+        "WHERE status='success' AND deleted_at IS NULL AND client_ip=?",
+        (client_ip,),
+    ).fetchone()
+    return int(row["n"])
+
+
+def oldest_active_by_ip(
+    conn: sqlite3.Connection, client_ip: str, limit: int
+) -> list[sqlite3.Row]:
+    """The N oldest active tracks for an IP (oldest first) — for rolling eviction."""
+    if limit <= 0:
+        return []
     return list(
         conn.execute(
             "SELECT * FROM downloads "
-            "WHERE status='success' AND deleted_at IS NULL "
-            "ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?",
-            (limit,),
+            "WHERE status='success' AND deleted_at IS NULL AND client_ip=? "
+            "ORDER BY COALESCE(finished_at, started_at) ASC, id ASC LIMIT ?",
+            (client_ip, limit),
         )
     )
 
@@ -193,13 +241,23 @@ def get_by_id(conn: sqlite3.Connection, row_id: int) -> sqlite3.Row | None:
 
 
 def find_successful_by_video_id(
-    conn: sqlite3.Connection, video_id: str
+    conn: sqlite3.Connection, video_id: str, client_ip: str | None = None
 ) -> sqlite3.Row | None:
-    return conn.execute(
+    """Most recent successful, non-deleted download of a video.
+
+    ``client_ip`` scopes dedup per IP (each IP keeps its own copy). Deleted rows
+    are ignored so a re-download after eviction works.
+    """
+    sql = (
         "SELECT * FROM downloads WHERE video_id=? AND status='success' "
-        "ORDER BY finished_at DESC LIMIT 1",
-        (video_id,),
-    ).fetchone()
+        "AND deleted_at IS NULL"
+    )
+    params: list[Any] = [video_id]
+    if client_ip is not None:
+        sql += " AND client_ip=?"
+        params.append(client_ip)
+    sql += " ORDER BY finished_at DESC LIMIT 1"
+    return conn.execute(sql, params).fetchone()
 
 
 # --- aggregates for /api/stats ---------------------------------------------
@@ -303,3 +361,40 @@ def get_login_required(conn: sqlite3.Connection) -> bool:
 
 def set_login_required(conn: sqlite3.Connection, enabled: bool) -> None:
     set_setting(conn, LOGIN_REQUIRED_KEY, "1" if enabled else "0")
+
+
+# --- per-IP activity (for inactivity-based auto-cleanup) --------------------
+
+def touch_ip(conn: sqlite3.Connection, client_ip: str | None) -> None:
+    """Record that ``client_ip`` is active right now."""
+    if not client_ip:
+        return
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    conn.execute(
+        "INSERT INTO ip_activity(ip, last_seen) VALUES (?, ?) "
+        "ON CONFLICT(ip) DO UPDATE SET last_seen=excluded.last_seen",
+        (client_ip, now),
+    )
+
+
+def inactive_ips_with_tracks(
+    conn: sqlite3.Connection, days: int
+) -> list[str]:
+    """IPs that own active tracks but haven't been seen for >= ``days`` days.
+
+    An IP with tracks but no activity row at all (legacy data) also counts.
+    """
+    rows = conn.execute(
+        """
+        SELECT d.client_ip AS ip
+        FROM downloads d
+        LEFT JOIN ip_activity a ON a.ip = d.client_ip
+        WHERE d.status='success' AND d.deleted_at IS NULL AND d.client_ip IS NOT NULL
+        GROUP BY d.client_ip
+        HAVING COALESCE(MAX(a.last_seen), '1970-01-01') <= datetime('now', ?)
+        """,
+        (f"-{int(days)} days",),
+    ).fetchall()
+    return [r["ip"] for r in rows]

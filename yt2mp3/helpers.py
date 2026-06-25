@@ -193,14 +193,17 @@ class DedupResult:
 
 
 def dedup_check(
-    db_path: Path | str, video_id: str, force: bool = False
+    db_path: Path | str,
+    video_id: str,
+    force: bool = False,
+    client_ip: str | None = None,
 ) -> DedupResult:
     if not is_valid_video_id(video_id):
         return DedupResult(action="invalid")
     if force:
         return DedupResult(action="redownload")
     with db.connect(db_path) as conn:
-        row = db.find_successful_by_video_id(conn, video_id)
+        row = db.find_successful_by_video_id(conn, video_id, client_ip=client_ip)
     if row is None:
         return DedupResult(action="download")
     file_path = row["file_path"]

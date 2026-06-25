@@ -3,7 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}yt2mp3{% endblock %}</title>
+<title>{% block title %}yt2mp3 — скачать YouTube в MP3 онлайн{% endblock %}</title>
+<meta name="description" content="{% block meta_description %}yt2mp3 — бесплатно скачать аудио с YouTube в MP3 онлайн: вставь ссылку, получи mp3, слушай прямо на сайте.{% endblock %}">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="{{ request.url._url.split('?')[0] if request else '/' }}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="yt2mp3 — скачать YouTube в MP3">
+<meta property="og:description" content="Вставь ссылку YouTube — получи MP3. Слушай прямо на сайте.">
+<meta name="theme-color" content="#6D28D9">
 <script src="/static/tailwind.js"></script>
 <script>
   tailwind.config = {
@@ -76,7 +83,17 @@
 </main>
 
 <footer class="max-w-6xl mx-auto px-6 py-8 text-xs text-slate-400">
-  yt2mp3 — личный архив, localhost only.
+  yt2mp3 — личный архив. Видны только треки, скачанные с твоего устройства.
 </footer>
+<script>
+  // Только один трек играет за раз: при старте любого <audio> остальные ставим на паузу.
+  // Делегирование на document + capture, чтобы работало и для элементов, добавленных HTMX.
+  document.addEventListener('play', function (e) {
+    if (!(e.target instanceof HTMLMediaElement)) return;
+    document.querySelectorAll('audio, video').forEach(function (m) {
+      if (m !== e.target && !m.paused) m.pause();
+    });
+  }, true);
+</script>
 </body>
 </html>

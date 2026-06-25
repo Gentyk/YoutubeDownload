@@ -50,7 +50,7 @@ def test_file_endpoint_nonexistent_id(client):
 def test_file_endpoint_missing_file_returns_410(client, tmp_db_path):
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, file_path, status) VALUES (?, ?, 'success')",
+            "INSERT INTO downloads (url, file_path, status, client_ip) VALUES (?, ?, 'success', 'testclient')",
             ("https://youtu.be/abc", "/nonexistent/ghost.mp3"),
         )
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -61,7 +61,7 @@ def test_file_endpoint_missing_file_returns_410(client, tmp_db_path):
 def test_file_endpoint_rejects_path_traversal(client, tmp_db_path):
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, file_path, status) VALUES (?, ?, 'success')",
+            "INSERT INTO downloads (url, file_path, status, client_ip) VALUES (?, ?, 'success', 'testclient')",
             ("https://youtu.be/abc", "/etc/passwd"),
         )
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -74,7 +74,7 @@ def test_file_endpoint_serves_valid_file(client, tmp_db_path, tmp_download_dir):
     f.write_bytes(b"ID3\x03" + b"\x00" * 100)
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, file_path, status) VALUES (?, ?, 'success')",
+            "INSERT INTO downloads (url, file_path, status, client_ip) VALUES (?, ?, 'success', 'testclient')",
             ("https://youtu.be/abc", str(f)),
         )
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -89,7 +89,7 @@ def test_dedup_skip_path(client, tmp_db_path, tmp_download_dir):
     f.write_bytes(b"\x00")
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, video_id, file_path, status) VALUES (?, ?, ?, 'success')",
+            "INSERT INTO downloads (url, video_id, file_path, status, client_ip) VALUES (?, ?, ?, 'success', 'testclient')",
             ("https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ", str(f)),
         )
     r = client.post(
@@ -106,7 +106,7 @@ def test_force_redownload_bypasses_dedup(client, tmp_db_path, tmp_download_dir, 
     f.write_bytes(b"\x00")
     with db.connect(tmp_db_path) as conn:
         conn.execute(
-            "INSERT INTO downloads (url, video_id, file_path, status) VALUES (?, ?, ?, 'success')",
+            "INSERT INTO downloads (url, video_id, file_path, status, client_ip) VALUES (?, ?, ?, 'success', 'testclient')",
             ("https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ", str(f)),
         )
     # Block the worker so we can observe submission state without it racing.
