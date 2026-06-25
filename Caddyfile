@@ -8,7 +8,11 @@
 
 {$DOMAIN} {
 	encode zstd gzip
-	reverse_proxy yt2mp3:8000
+	# Overwrite X-Forwarded-For with the real remote IP so a client can't spoof
+	# it to view another IP's per-IP library. Caddy is the only trusted proxy.
+	reverse_proxy yt2mp3:8000 {
+		header_up X-Forwarded-For {remote_host}
+	}
 
 	# Long-lived audio streams: don't cut off playback/seek mid-request.
 	request_body {
