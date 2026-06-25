@@ -138,3 +138,26 @@ def test_sysmon_samples():
     m._sample()
     latest = m.latest()
     assert "cpu_pct" in latest and "ram_pct" in latest
+
+
+# --- v3.3 JSON API ----------------------------------------------------------
+
+def test_api_library_scoped(client, tmp_db_path: Path, tmp_download_dir: Path):
+    f = tmp_download_dir / "j.mp3"
+    f.write_bytes(b"x")
+    with db.connect(tmp_db_path) as conn:
+        _seed(conn, "testclient", "JsonTrack", str(f))
+        _seed(conn, "9.9.9.9", "HiddenTrack", "h.mp3")
+    res = client.get("/api/library").json()
+    titles = [t["title"] for t in res["tracks"]]
+    assert "JsonTrack" in titles and "HiddenTrack" not in titles
+
+
+def test_api_queue_empty(client):
+    assert client.get("/api/queue").json() == {"jobs": []}
+
+
+def test_api_download_rejects_non_youtube(client):
+    res = client.post("/api/download", data={"urls": "https://example.com/x"}).json()
+    assert res["errors"]
+    assert not res["submitted"]

@@ -1,59 +1,69 @@
 {% extends "base.html" %}
 {% block title %}yt2mp3 — {{ t('nav_download') }}{% endblock %}
 
+{% block head %}
+  <link rel="stylesheet" href="/static/app.css">
+  <script>window.I18N = {{ js_strings_json()|safe }};</script>
+  <script src="/static/app.js" defer></script>
+{% endblock %}
+
 {% block content %}
-<section class="hero-grad -mx-6 -mt-10 px-6 pt-12 pb-10 rounded-b-3xl mb-8">
+<section class="hero-grad -mx-6 -mt-10 px-6 pt-10 pb-8 rounded-b-3xl mb-6">
   <div class="max-w-3xl mx-auto text-center">
-    <h1 class="text-4xl sm:text-5xl font-700 tracking-tight">
-      {{ t('hero_title') }}
-    </h1>
+    <h1 class="text-4xl sm:text-5xl font-700 tracking-tight">{{ t('hero_title') }}</h1>
     <p class="mt-3 text-ink/70 max-w-prose mx-auto">{{ t('hero_sub') }}</p>
 
-    <form method="post" action="/download" hx-post="/download" hx-target="#form-result"
-          hx-swap="innerHTML" hx-disabled-elt="#submit-btn, textarea" class="mt-7 text-left">
-      <div class="rounded-3xl bg-white shadow-lg shadow-brand-500/10 border border-brand-100 p-3">
-        <textarea name="urls" rows="3" required autofocus
+    <div class="mt-6 rounded-3xl bg-white shadow-lg shadow-brand-500/10 border border-brand-100 p-3 text-left">
+      <div class="flex items-center gap-2">
+        <input id="url-input" type="text" autofocus
           placeholder="{{ t('form_placeholder') }}"
-          class="w-full rounded-2xl bg-brand-50/60 p-4 font-mono text-sm leading-6 focus-ring resize-none"
-          onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){this.form.requestSubmit();}"></textarea>
-        <div class="flex flex-wrap items-center justify-between gap-3 px-1 pt-2">
-          <div class="flex flex-wrap items-center gap-4 text-xs text-ink/70">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" name="force" value="1" class="rounded text-brand-500 focus-ring"> {{ t('force_label') }}
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" name="allow_playlist" value="1" class="rounded text-brand-500 focus-ring"> {{ t('playlist_label') }}
-            </label>
+          class="flex-1 rounded-2xl bg-brand-50/60 px-4 py-3 text-sm focus-ring">
+        <button id="go-btn"
+          class="rounded-full bg-brand-500 hover:bg-brand-600 text-white font-800 px-6 py-3 shadow-md shadow-brand-500/30 transition focus-ring whitespace-nowrap">
+          {{ t('submit') }} ↑
+        </button>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-3 px-1 pt-3">
+        <div class="flex flex-wrap items-center gap-4 text-xs text-ink/70">
+          <label class="flex items-center gap-2 cursor-pointer"><input id="force-cb" type="checkbox" class="rounded text-brand-500 focus-ring"> {{ t('force_label') }}</label>
+          <label class="flex items-center gap-2 cursor-pointer"><input id="playlist-cb" type="checkbox" class="rounded text-brand-500 focus-ring"> {{ t('playlist_label') }}</label>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-1.5">
+            <button data-theme-btn="mango" aria-label="Mango"></button>
+            <button data-theme-btn="sunset" aria-label="Sunset"></button>
+            <button data-theme-btn="caramel" aria-label="Caramel"></button>
           </div>
-          <button id="submit-btn" type="submit"
-            class="inline-flex items-center gap-2 rounded-full bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white font-800 px-7 py-3 shadow-md shadow-brand-500/30 transition focus-ring disabled:opacity-50">
-            {{ t('submit') }} <span class="htmx-indicator inline-block animate-spin">⏳</span>
-          </button>
+          <button id="sound-btn" aria-label="sound" title="sound">🔊</button>
         </div>
       </div>
-      <p class="mt-2 text-center text-xs text-ink/40">{{ t('form_hint') }}</p>
-    </form>
+    </div>
   </div>
 </section>
 
-<section class="grid grid-cols-1 lg:grid-cols-5 gap-8">
-  <div class="lg:col-span-3">
-    <div id="form-result"></div>
-    <div id="recent" hx-get="/library/fragment" hx-trigger="load, every 5s"
-         hx-swap="morph:innerHTML" hx-ext="morph"></div>
+<section class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+  <!-- stage / поляна -->
+  <div id="stage" class="stage lg:col-span-3">
+    <div class="stage-empty">
+      <p class="text-2xl font-700">{{ t('hero_title') }}</p>
+      <p class="mt-2 text-sm" id="empty-sub"></p>
+    </div>
   </div>
 
-  <aside class="lg:col-span-2">
-    <div class="rounded-3xl border border-brand-100 bg-white p-5 shadow-sm">
-      <div class="flex items-center justify-between">
-        <h2 class="font-700 tracking-tight">{{ t('queue_title') }}</h2>
-        <span class="text-xs text-ink/40">{{ t('queue_updates') }}</span>
-      </div>
-      <div id="queue" hx-get="/queue" hx-trigger="load, every 2s" hx-swap="innerHTML"
-           hx-ext="morph" aria-live="polite" class="mt-4 min-h-[6rem]">
-        <p class="text-sm text-ink/40">{{ t('queue_empty') }}</p>
-      </div>
+  <!-- player dock -->
+  <aside id="dock" class="lg:col-span-2 rounded-3xl border border-brand-100 bg-white p-5 shadow-sm">
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="font-700 tracking-tight">{{ t('nav_library') }}</h2>
+      <span id="dock-count" class="text-xs text-ink/40"></span>
     </div>
+    <ul id="dock-list" class="min-h-[6rem]"></ul>
   </aside>
 </section>
+
+<div id="toast"></div>
+
+<script>
+  // fill JS-provided strings into static markup
+  (function(){ var s=document.getElementById('empty-sub'); if(s&&window.I18N) s.textContent=window.I18N.emptySub||''; })();
+</script>
 {% endblock %}

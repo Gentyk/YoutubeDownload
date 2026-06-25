@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import shutil
@@ -158,6 +159,8 @@ templates.env.globals["cur_lang"] = i18n.get_lang
 templates.env.globals["LANGS"] = config.SUPPORTED_LANGS
 templates.env.globals["LANG_NAMES"] = i18n.LANG_NAMES
 templates.env.globals["LANG_FLAGS"] = i18n.LANG_FLAGS
+# Front-end string bundle (current language) as a JS-embeddable JSON literal.
+templates.env.globals["js_strings_json"] = lambda: json.dumps(i18n.js_bundle(), ensure_ascii=False)
 
 
 class LangMiddleware:
@@ -384,6 +387,105 @@ def _touch_current_ip(request: Request) -> None:
             db.touch_ip(conn, ip)
     except Exception:
         log.exception("touch_ip failed")
+
+
+# --- JSON API for the interactive front-end (stage/balls/player) ------------
+
+def _job_pct(job) -> int:
+    p = job.progress or {}
+    dl, total = p.get("downloaded_bytes"), p.get("total_bytes")
+    if dl and total:
+        return max(0, min(100, int(dl / total * 100)))
+    return 0
+
+
+@app.get("/api/queue")
+async def api_queue(request: Request) -> JSONResponse:
+    """Active jobs for this viewer's IP as JSON — drives the floating balls."""
+    scope = _scope_ip(request)
+    jobs = []
+    for j in get_queue().snapshot():
+        if scope is not None and j.client_ip != scope:
+            continue
+        jobs.append({
+            "id": j.job_id,
+            "url": j.url,
+            "state": j.state,  # queued|downloading|converting|done|failed|cancelled
+            "title": (j.result.title if j.result else None),
+            "pct": _job_pct(j),
+            "error": (j.result.error if (j.result and j.state == "failed") else None),
+        })
+    return JSONResponse({"jobs": jobs})
+
+
+@app.get("/api/library")
+async def api_library(request: Request) -> JSONResponse:
+    """Ready tracks for this viewer's IP as JSON — the player dock."""
+    with db.connect(config.DB_PATH) as conn:
+        rows = db.get_library_rows(conn, client_ip=_scope_ip(request))
+    tracks = [{
+        "id": r["id"],
+        "title": r["title"] or r["url"],
+        "channel": r["channel"],
+        "duration_s": r["duration_s"],
+        "size_mb": round(r["file_size_bytes"] / 1048576, 1) if r["file_size_bytes"] else None,
+    } for r in rows]
+    return JSONResponse({"tracks": tracks, "max_per_ip": config.MAX_TRACKS_PER_IP})
+
+
+@app.post("/api/download")
+async def api_download(
+    request: Request,
+    urls: str = Form(""),
+    force: str = Form(""),
+    allow_playlist: str = Form(""),
+) -> JSONResponse:
+    """Submit links, return JSON (job ids / skipped / errors / evict warning)."""
+    q = get_queue()
+    force_flag = bool(force)
+    allow_playlist_flag = bool(allow_playlist)
+    client_ip = _client_ip(request)
+    _touch_current_ip(request)
+
+    youtube_urls = filter_youtube(extract_urls(urls))
+    submitted: list[dict] = []
+    skipped: list[dict] = []
+    errors: list[str] = []
+
+    for url in youtube_urls:
+        if is_playlist_only_url(url) and not allow_playlist_flag:
+            errors.append(i18n.t("playlist_need_expand"))
+            continue
+        video_id = normalize_url(url)
+        if not video_id:
+            continue
+        decision = dedup_check(config.DB_PATH, video_id, force=force_flag, client_ip=client_ip)
+        if decision.action == "skip":
+            skipped.append({"url": url, "existing_id": decision.existing_id})
+            continue
+        try:
+            job_id = q.submit(url, force=force_flag, yes_playlist=allow_playlist_flag, client_ip=client_ip)
+        except QueueFull:
+            errors.append(i18n.t("queue_full"))
+            break
+        submitted.append({"id": job_id, "url": url})
+
+    evict_warning = None
+    if client_ip and submitted:
+        cap = config.MAX_TRACKS_PER_IP
+        with db.connect(config.DB_PATH) as conn:
+            existing = db.count_active_by_ip(conn, client_ip)
+        overflow = existing + len(submitted) - cap
+        if overflow > 0:
+            evict_warning = i18n.t("evict_warn", n=overflow, cap=cap)
+
+    if not youtube_urls:
+        errors.append(i18n.t("no_valid_urls"))
+
+    return JSONResponse({
+        "submitted": submitted, "skipped": skipped,
+        "errors": errors, "evict_warning": evict_warning,
+    })
 
 
 @app.post("/download", response_class=HTMLResponse)

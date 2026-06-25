@@ -94,11 +94,92 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "q_done": {"ru": "готово", "en": "done", "fr": "fini", "de": "fertig"},
     "q_failed": {"ru": "ошибка", "en": "error", "fr": "erreur", "de": "Fehler"},
     "q_cancelled": {"ru": "отменено", "en": "cancelled", "fr": "annulé", "de": "abgebrochen"},
+    "playlist_need_expand": {
+        "ru": "Это плейлист — включи «разворачивать плейлист».",
+        "en": "That's a playlist — enable “expand playlist”.",
+        "fr": "C'est une playlist — activez « développer la playlist ».",
+        "de": "Das ist eine Playlist — „Playlist aufklappen“ aktivieren.",
+    },
+    "evict_warn": {
+        "ru": "Лимит {cap} треков. Удалятся {n} самых старых.",
+        "en": "Limit {cap} tracks. The {n} oldest will be removed.",
+        "fr": "Limite {cap} pistes. Les {n} plus anciennes seront supprimées.",
+        "de": "Limit {cap} Titel. Die {n} ältesten werden entfernt.",
+    },
     "footer": {"ru": "yt2mp3 — личный архив. Видны только треки с твоего устройства.",
                "en": "yt2mp3 — personal archive. Only tracks from your device are shown.",
                "fr": "yt2mp3 — archive personnelle. Seules les pistes de votre appareil.",
                "de": "yt2mp3 — persönliches Archiv. Nur Titel von deinem Gerät."},
 }
+
+
+# Strings used by the interactive front-end engine (static/app.js).
+JS_STRINGS: dict[str, dict[str, str]] = {
+    "ru": {
+        "placeholder": "Вставь ссылку на YouTube… можно несколько сразу",
+        "go": "Скачать ↑", "emptyTitle": "Тут пока пусто и тихо",
+        "emptySub": "Вставь или перетащи ссылку — и она вспорхнёт сюда шариком ↑",
+        "dropHere": "Брось ссылку сюда", "queued": "в очереди", "downloading": "качается",
+        "converting": "конвертируем", "ready": "готово", "failed": "ошибка", "retry": "↻ Повторить",
+        "player": "Мой плеер", "listenSave": "Слушай или сохраняй готовое",
+        "play": "Слушать", "pause": "Пауза", "save": "↓ Скачать", "remove": "Убрать",
+        "dlAll": "↓ Скачать всё", "clear": "Очистить", "emptyTracks": "Здесь появятся готовые треки 🎧",
+        "needLink": "Вставь ссылку на YouTube", "first8": "Добавил первые 8 ссылок",
+        "dlToast": "Скачивание", "dropVideo": "Перетащи ссылку на видео",
+        "themeMango": "Манго", "themeSunset": "Закат", "themeCaramel": "Карамель",
+        "soundAria": "Звук", "themeAria": "Оформление", "tracks": "треков", "del": "Удалить",
+    },
+    "en": {
+        "placeholder": "Paste a YouTube link… several at once is fine",
+        "go": "Download ↑", "emptyTitle": "Empty and quiet for now",
+        "emptySub": "Paste or drop a link — it'll flutter up here as a ball ↑",
+        "dropHere": "Drop the link here", "queued": "queued", "downloading": "downloading",
+        "converting": "converting", "ready": "done", "failed": "error", "retry": "↻ Retry",
+        "player": "My player", "listenSave": "Listen or save your tracks",
+        "play": "Play", "pause": "Pause", "save": "↓ Save", "remove": "Remove",
+        "dlAll": "↓ Download all", "clear": "Clear", "emptyTracks": "Your finished tracks land here 🎧",
+        "needLink": "Paste a YouTube link", "first8": "Added the first 8 links",
+        "dlToast": "Downloading", "dropVideo": "Drop a video link",
+        "themeMango": "Mango", "themeSunset": "Sunset", "themeCaramel": "Caramel",
+        "soundAria": "Sound", "themeAria": "Theme", "tracks": "tracks", "del": "Delete",
+    },
+    "fr": {
+        "placeholder": "Collez un lien YouTube… plusieurs à la fois, c'est bon",
+        "go": "Télécharger ↑", "emptyTitle": "Vide et silencieux pour l'instant",
+        "emptySub": "Collez ou déposez un lien — il s'envolera ici en bulle ↑",
+        "dropHere": "Déposez le lien ici", "queued": "en file", "downloading": "téléchargement",
+        "converting": "conversion", "ready": "fini", "failed": "erreur", "retry": "↻ Réessayer",
+        "player": "Mon lecteur", "listenSave": "Écoutez ou enregistrez vos pistes",
+        "play": "Écouter", "pause": "Pause", "save": "↓ Enregistrer", "remove": "Retirer",
+        "dlAll": "↓ Tout télécharger", "clear": "Vider", "emptyTracks": "Vos pistes finies arrivent ici 🎧",
+        "needLink": "Collez un lien YouTube", "first8": "8 premiers liens ajoutés",
+        "dlToast": "Téléchargement", "dropVideo": "Déposez un lien vidéo",
+        "themeMango": "Mangue", "themeSunset": "Coucher", "themeCaramel": "Caramel",
+        "soundAria": "Son", "themeAria": "Thème", "tracks": "pistes", "del": "Supprimer",
+    },
+    "de": {
+        "placeholder": "YouTube-Link einfügen… mehrere gleichzeitig sind ok",
+        "go": "Laden ↑", "emptyTitle": "Noch leer und still",
+        "emptySub": "Link einfügen oder ziehen — er fliegt als Kugel hierher ↑",
+        "dropHere": "Link hier ablegen", "queued": "wartet", "downloading": "lädt",
+        "converting": "konvertiert", "ready": "fertig", "failed": "Fehler", "retry": "↻ Erneut",
+        "player": "Mein Player", "listenSave": "Höre oder speichere deine Titel",
+        "play": "Abspielen", "pause": "Pause", "save": "↓ Speichern", "remove": "Entfernen",
+        "dlAll": "↓ Alle laden", "clear": "Leeren", "emptyTracks": "Fertige Titel landen hier 🎧",
+        "needLink": "YouTube-Link einfügen", "first8": "Erste 8 Links hinzugefügt",
+        "dlToast": "Download", "dropVideo": "Videolink ablegen",
+        "themeMango": "Mango", "themeSunset": "Sonnenuntergang", "themeCaramel": "Karamell",
+        "soundAria": "Ton", "themeAria": "Thema", "tracks": "Titel", "del": "Löschen",
+    },
+}
+
+
+def js_bundle() -> dict[str, str]:
+    """Front-end strings for the current language (with English fallback)."""
+    lang = _current.get()
+    base = dict(JS_STRINGS.get("en", {}))
+    base.update(JS_STRINGS.get(lang, {}))
+    return base
 
 
 def set_lang(lang: str) -> None:
