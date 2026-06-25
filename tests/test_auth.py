@@ -49,7 +49,21 @@ def test_open_by_default_even_with_admin_creds(monkeypatch, tmp_db_path, tmp_dow
     app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
     with TestClient(app) as c:
         assert c.get("/", follow_redirects=False).status_code == 200
-        assert c.get("/library", follow_redirects=False).status_code == 200
+        assert c.get("/api/queue", follow_redirects=False).status_code == 200
+
+
+def test_library_and_stats_are_admin_only(monkeypatch, tmp_db_path, tmp_download_dir):
+    """Home is public; Library and Stats require admin login."""
+    app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
+    with TestClient(app) as c:
+        assert c.get("/", follow_redirects=False).status_code == 200  # home public
+        assert c.get("/api/queue", follow_redirects=False).status_code == 200  # player api public
+        for p in ("/library", "/stats", "/api/stats"):
+            r = c.get(p, follow_redirects=False)
+            assert r.status_code == 303 and r.headers["location"].startswith("/login"), p
+        _login(c)
+        for p in ("/library", "/stats"):
+            assert c.get(p, follow_redirects=False).status_code == 200, p
 
 
 def test_admin_panel_requires_login(monkeypatch, tmp_db_path, tmp_download_dir):

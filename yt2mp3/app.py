@@ -150,7 +150,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 ADMIN_ENABLED = config.ADMIN_ENABLED
 templates.env.globals["ADMIN_ENABLED"] = ADMIN_ENABLED
 # Cache-buster for app.js/app.css — bump on each release so browsers fetch fresh.
-ASSET_VER = "3.4"
+ASSET_VER = "3.5"
 templates.env.globals["ASSET_VER"] = ASSET_VER
 
 _OPEN_PATHS = frozenset({"/login", "/logout", "/healthz", "/robots.txt", "/sitemap.xml"})
@@ -228,10 +228,18 @@ templates.env.globals["is_admin"] = _is_admin
 def _is_admin_only_path(path: str) -> bool:
     """Paths that always require admin login, regardless of the open/closed toggle.
 
-    Note: file delete is NOT here — users may delete their OWN tracks; ownership
-    is enforced in the handler instead.
+    The home page (/) and the player API it uses (/api/queue, /api/library,
+    /api/download) stay public; the Library and Stats pages are admin-only.
+    File delete is NOT here — users may delete their OWN tracks; ownership is
+    enforced in the handler instead.
     """
-    return path == "/admin" or path.startswith("/admin/")
+    if path == "/admin" or path.startswith("/admin/"):
+        return True
+    if path == "/stats" or path == "/api/stats":
+        return True
+    if path == "/library" or path.startswith("/library/"):
+        return True
+    return False
 
 
 class SecurityHeadersMiddleware:

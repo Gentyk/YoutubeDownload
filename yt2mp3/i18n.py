@@ -51,6 +51,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "all_arrow": {"ru": "Все →", "en": "All →", "fr": "Tout →", "de": "Alle →"},
     # library
     "library_title": {"ru": "Загружено", "en": "Your library", "fr": "Votre bibliothèque", "de": "Deine Bibliothek"},
+    "player": {"ru": "Мой плеер", "en": "My player", "fr": "Mon lecteur", "de": "Mein Player"},
     "library_empty_title": {"ru": "Пока ничего не скачано.", "en": "Nothing downloaded yet.",
                             "fr": "Rien téléchargé pour l’instant.", "de": "Noch nichts geladen."},
     "library_empty_sub": {"ru": "Скачай первый трек на главной — он появится здесь.",

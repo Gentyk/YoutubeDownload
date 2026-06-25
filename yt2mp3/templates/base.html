@@ -54,8 +54,10 @@
     </a>
     <nav class="flex items-center gap-1 sm:gap-4 text-sm font-700">
       <a href="/" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_download') }}</a>
-      <a href="/library" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_library') }}</a>
-      <a href="/stats" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_stats') }}</a>
+      {% if not ADMIN_ENABLED or is_admin(request) %}
+        <a href="/library" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_library') }}</a>
+        <a href="/stats" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_stats') }}</a>
+      {% endif %}
       {% if is_admin(request) %}
         <a href="/admin" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_admin') }}</a>
         <form method="post" action="/logout" class="inline-flex"><button class="px-2 py-1 rounded-lg text-coral hover:bg-coral/10 transition">{{ t('nav_logout') }}</button></form>
