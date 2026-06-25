@@ -43,6 +43,32 @@
 </style>
 <script src="/static/htmx.min.js" defer></script>
 <script src="/static/htmx-idiomorph.min.js" defer></script>
+<script>
+  window.I18N_ALL = {{ i18n_all_json()|safe }};
+  // Instant language switch — no page reload (like the prototype).
+  function ytSetLang(code){
+    var dict = (window.I18N_ALL||{})[code]; if(!dict) return;
+    document.documentElement.lang = code;
+    document.querySelectorAll('[data-i18n]').forEach(function(el){
+      var k = el.getAttribute('data-i18n'); if(dict[k]!=null) el.textContent = dict[k];
+    });
+    document.querySelectorAll('[data-i18n-ph]').forEach(function(el){
+      var k = el.getAttribute('data-i18n-ph'); if(dict[k]!=null) el.setAttribute('placeholder', dict[k]);
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(function(el){
+      var k = el.getAttribute('data-i18n-title'); if(dict[k]!=null) el.setAttribute('title', dict[k]);
+    });
+    window.I18N = dict;
+    document.cookie = 'lang='+code+';path=/;max-age='+(365*24*3600)+';samesite=lax';
+    try{ localStorage.setItem('yt_lang', code); }catch(e){}
+    document.querySelectorAll('[data-lang-btn]').forEach(function(b){
+      var on = b.getAttribute('data-lang-btn')===code;
+      b.classList.toggle('bg-brand-100', on); b.classList.toggle('ring-1', on); b.classList.toggle('ring-brand-300', on);
+      b.classList.toggle('opacity-55', !on);
+    });
+    window.dispatchEvent(new CustomEvent('ytlangchange',{detail:code}));
+  }
+</script>
 {% block head %}{% endblock %}
 </head>
 <body class="bg-cream text-ink min-h-screen">
@@ -53,30 +79,23 @@
       <span class="text-xl font-display font-700 tracking-tight">yt2mp3</span>
     </a>
     <nav class="flex items-center gap-1 sm:gap-4 text-sm font-700">
-      <a href="/" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_download') }}</a>
+      <a href="/" data-i18n="nav_download" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_download') }}</a>
       {% if not ADMIN_ENABLED or is_admin(request) %}
-        <a href="/library" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_library') }}</a>
-        <a href="/stats" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_stats') }}</a>
+        <a href="/library" data-i18n="nav_library" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_library') }}</a>
+        <a href="/stats" data-i18n="nav_stats" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_stats') }}</a>
       {% endif %}
       {% if is_admin(request) %}
-        <a href="/admin" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_admin') }}</a>
-        <form method="post" action="/logout" class="inline-flex"><button class="px-2 py-1 rounded-lg text-coral hover:bg-coral/10 transition">{{ t('nav_logout') }}</button></form>
+        <a href="/admin" data-i18n="nav_admin" class="px-2 py-1 rounded-lg hover:bg-brand-100 hover:text-brand-700 transition">{{ t('nav_admin') }}</a>
+        <form method="post" action="/logout" class="inline-flex"><button data-i18n="nav_logout" class="px-2 py-1 rounded-lg text-coral hover:bg-coral/10 transition">{{ t('nav_logout') }}</button></form>
       {% elif ADMIN_ENABLED and request.url.path != '/login' %}
-        <a href="/login" class="px-2 py-1 rounded-lg text-ink/50 hover:text-brand-700 transition">{{ t('nav_login') }}</a>
+        <a href="/login" data-i18n="nav_login" class="px-2 py-1 rounded-lg text-ink/50 hover:text-brand-700 transition">{{ t('nav_login') }}</a>
       {% endif %}
-      <!-- language switcher -->
-      <div class="relative group ml-1">
-        <button class="px-2 py-1 rounded-lg hover:bg-brand-100 transition flex items-center gap-1" aria-label="language">
-          <span>{{ LANG_FLAGS[cur_lang()] }}</span><span class="hidden sm:inline">{{ cur_lang()|upper }}</span>
-        </button>
-        <div class="absolute right-0 mt-1 hidden group-hover:block bg-white rounded-xl shadow-lg border border-brand-100 py-1 min-w-[9rem] z-20">
-          {% for code in LANGS %}
-            <a href="/lang/{{ code }}?next={{ request.url.path }}"
-               class="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-brand-50 {{ 'text-brand-700 font-700' if code == cur_lang() else '' }}">
-              <span>{{ LANG_FLAGS[code] }}</span> {{ LANG_NAMES[code] }}
-            </a>
-          {% endfor %}
-        </div>
+      <!-- instant language switcher (no reload) -->
+      <div class="flex items-center gap-0.5 ml-1">
+        {% for code in LANGS %}
+          <button type="button" data-lang-btn="{{ code }}" onclick="ytSetLang('{{ code }}')" title="{{ LANG_NAMES[code] }}"
+            class="px-1.5 py-1 rounded-lg text-base leading-none transition {{ 'bg-brand-100 ring-1 ring-brand-300' if code == cur_lang() else 'opacity-55 hover:opacity-100' }}">{{ LANG_FLAGS[code] }}</button>
+        {% endfor %}
       </div>
     </nav>
   </div>

@@ -10,23 +10,23 @@
 {% block content %}
 <section class="hero-grad -mx-6 -mt-10 px-6 pt-10 pb-8 rounded-b-3xl mb-6">
   <div class="max-w-3xl mx-auto text-center">
-    <h1 class="text-4xl sm:text-5xl font-700 tracking-tight">{{ t('hero_title') }}</h1>
-    <p class="mt-3 text-ink/70 max-w-prose mx-auto">{{ t('hero_sub') }}</p>
+    <h1 data-i18n="hero_title" class="text-4xl sm:text-5xl font-700 tracking-tight">{{ t('hero_title') }}</h1>
+    <p data-i18n="hero_sub" class="mt-3 text-ink/70 max-w-prose mx-auto">{{ t('hero_sub') }}</p>
 
     <div class="mt-6 rounded-3xl bg-white shadow-lg shadow-brand-500/10 border border-brand-100 p-3 text-left">
       <div class="flex items-center gap-2">
         <input id="url-input" type="text" autofocus
-          placeholder="{{ t('form_placeholder') }}"
+          data-i18n-ph="placeholder" placeholder="{{ t('form_placeholder') }}"
           class="flex-1 rounded-2xl bg-brand-50/60 px-4 py-3 text-sm focus-ring">
         <button id="go-btn"
           class="rounded-full bg-brand-500 hover:bg-brand-600 text-white font-800 px-6 py-3 shadow-md shadow-brand-500/30 transition focus-ring whitespace-nowrap">
-          {{ t('submit') }} ↑
+          <span data-i18n="submit">{{ t('submit') }}</span> ↑
         </button>
       </div>
       <div class="flex flex-wrap items-center justify-between gap-3 px-1 pt-3">
         <div class="flex flex-wrap items-center gap-4 text-xs text-ink/70">
-          <label class="flex items-center gap-2 cursor-pointer"><input id="force-cb" type="checkbox" class="rounded text-brand-500 focus-ring"> {{ t('force_label') }}</label>
-          <label class="flex items-center gap-2 cursor-pointer"><input id="playlist-cb" type="checkbox" class="rounded text-brand-500 focus-ring"> {{ t('playlist_label') }}</label>
+          <label class="flex items-center gap-2 cursor-pointer"><input id="force-cb" type="checkbox" class="rounded text-brand-500 focus-ring"> <span data-i18n="force_label">{{ t('force_label') }}</span></label>
+          <label class="flex items-center gap-2 cursor-pointer"><input id="playlist-cb" type="checkbox" class="rounded text-brand-500 focus-ring"> <span data-i18n="playlist_label">{{ t('playlist_label') }}</span></label>
         </div>
         <div class="flex items-center gap-3">
           <div class="flex items-center gap-1.5">
@@ -45,15 +45,15 @@
   <!-- stage / поляна -->
   <div id="stage" class="stage lg:col-span-3">
     <div class="stage-empty">
-      <p class="text-2xl font-700">{{ t('hero_title') }}</p>
-      <p class="mt-2 text-sm" id="empty-sub"></p>
+      <p data-i18n="emptyTitle" class="text-2xl font-700">{{ t('hero_title') }}</p>
+      <p class="mt-2 text-sm" id="empty-sub" data-i18n="emptySub"></p>
     </div>
   </div>
 
   <!-- player dock -->
   <aside id="dock" class="lg:col-span-2 rounded-3xl border border-brand-100 bg-white p-5 shadow-sm">
     <div class="flex items-baseline justify-between mb-3">
-      <h2 class="font-700 tracking-tight">{{ t('player') }}</h2>
+      <h2 data-i18n="player" class="font-700 tracking-tight">{{ t('player') }}</h2>
       <span id="dock-count" class="text-xs text-ink/40"></span>
     </div>
     <ul id="dock-list" class="min-h-[6rem]"></ul>

@@ -183,6 +183,22 @@ def js_bundle() -> dict[str, str]:
     return base
 
 
+def all_bundle() -> dict[str, dict[str, str]]:
+    """Every key in every language — for instant client-side switching.
+
+    Merges page TRANSLATIONS + front-end JS_STRINGS into one {lang: {key: text}}.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for lang in config.SUPPORTED_LANGS:
+        d: dict[str, str] = {}
+        for key, m in TRANSLATIONS.items():
+            d[key] = m.get(lang) or m.get("en") or key
+        d.update(JS_STRINGS.get("en", {}))
+        d.update(JS_STRINGS.get(lang, {}))
+        out[lang] = d
+    return out
+
+
 def set_lang(lang: str) -> None:
     _current.set(lang if lang in config.SUPPORTED_LANGS else config.DEFAULT_LANG)
 

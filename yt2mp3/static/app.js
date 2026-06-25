@@ -2,7 +2,7 @@
    download queue; finished downloads fly into the real player dock. */
 (() => {
   "use strict";
-  const T = window.I18N || {};
+  let T = window.I18N || {};
   const $ = (s, r = document) => r.querySelector(s);
   const api = (u, o) => fetch(u, o).then(r => r.ok ? r.json() : Promise.reject(r));
 
@@ -93,6 +93,7 @@
   function updateBall(id, state, pct, title, error) {
     const b = balls.get(id);
     if (!b || b.landed) return;
+    b.snap = { state, pct, title, error };  // remember for re-render on lang change
     b.el.querySelector(".ball-title").textContent = title || shortName(b.url);
     const label = { queued: T.queued, downloading: T.downloading, converting: T.converting, done: T.ready, failed: T.failed, cancelled: T.failed }[state] || state;
     b.el.querySelector(".ball-state").textContent = error ? (T.failed) : label;
@@ -236,6 +237,15 @@
     loadLibrary();
     // pick up downloads started elsewhere / on first load
     api("/api/queue").then(res => { if ((res.jobs || []).length) startPolling(); }).catch(() => {});
+    // instant language switch (fired by ytSetLang in base.html)
+    window.addEventListener("ytlangchange", () => {
+      T = window.I18N || T;
+      dockSig = null; loadLibrary();                 // re-render player labels
+      balls.forEach((b, id) => {                      // re-render ball state labels
+        if (b.snap && !b.landed) updateBall(id, b.snap.state, b.snap.pct, b.snap.title, b.snap.error);
+        const rb = b.el.querySelector(".ball-retry"); if (rb) rb.textContent = T.retry;
+      });
+    });
   }
   if (document.readyState !== "loading") init();
   else document.addEventListener("DOMContentLoaded", init);

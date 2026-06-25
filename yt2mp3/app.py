@@ -150,7 +150,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 ADMIN_ENABLED = config.ADMIN_ENABLED
 templates.env.globals["ADMIN_ENABLED"] = ADMIN_ENABLED
 # Cache-buster for app.js/app.css — bump on each release so browsers fetch fresh.
-ASSET_VER = "3.5"
+ASSET_VER = "3.6"
 templates.env.globals["ASSET_VER"] = ASSET_VER
 
 _OPEN_PATHS = frozenset({"/login", "/logout", "/healthz", "/robots.txt", "/sitemap.xml"})
@@ -164,6 +164,8 @@ templates.env.globals["LANG_NAMES"] = i18n.LANG_NAMES
 templates.env.globals["LANG_FLAGS"] = i18n.LANG_FLAGS
 # Front-end string bundle (current language) as a JS-embeddable JSON literal.
 templates.env.globals["js_strings_json"] = lambda: json.dumps(i18n.js_bundle(), ensure_ascii=False)
+# All languages at once — powers instant client-side language switching.
+templates.env.globals["i18n_all_json"] = lambda: json.dumps(i18n.all_bundle(), ensure_ascii=False)
 
 
 class LangMiddleware:
