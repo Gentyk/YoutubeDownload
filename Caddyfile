@@ -1,0 +1,26 @@
+# Caddy reverse-proxy with automatic HTTPS (Let's Encrypt).
+#
+# {$DOMAIN} is read from the environment (see docker-compose.yml / .env).
+# Caddy fetches + renews a TLS cert for it automatically and redirects HTTP→HTTPS.
+#
+# The app itself stays plain HTTP on the internal Docker network (yt2mp3:8000);
+# Caddy terminates TLS and forwards the real client IP + scheme via X-Forwarded-*.
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy yt2mp3:8000
+
+	# Long-lived audio streams: don't cut off playback/seek mid-request.
+	request_body {
+		max_size 10MB
+	}
+
+	header {
+		# Defence-in-depth headers (app also sets the core ones).
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}

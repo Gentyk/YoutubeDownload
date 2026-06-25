@@ -62,14 +62,16 @@
     </div>
   </section>
 
-  <!-- Per-IP analytics — TD-7 (v2) -->
+  <!-- Per-IP analytics — TD-7 (v2). Sensitive → admin-only. -->
+  {% if not ADMIN_ENABLED or is_admin(request) %}
   <section class="mt-8 rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
     <div class="flex items-baseline justify-between">
       <h2 class="text-lg font-semibold tracking-tight">Откуда качал</h2>
-      <span class="text-xs text-slate-400">за 30 дней, по IP</span>
+      <span class="text-xs text-slate-400">за 30 дней, по IP · только админ</span>
     </div>
     <div class="mt-4 h-48"><canvas id="chart-ips"></canvas></div>
   </section>
+  {% endif %}
 
   <!-- recent table -->
   <section class="mt-8 rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
@@ -215,21 +217,24 @@
           options: { plugins: { legend: { display: false } }, maintainAspectRatio: false }
         });
 
-        // per-IP — horizontal bar
-        const ips = data.by_ip || [];
-        new Chart(document.getElementById('chart-ips'), {
-          type: 'bar',
-          data: {
-            labels: ips.map(x => x.ip),
-            datasets: [{ data: ips.map(x => x.n), backgroundColor: PURPLE }]
-          },
-          options: {
-            indexAxis: 'y',
-            plugins: { legend: { display: false } },
-            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
-            maintainAspectRatio: false,
-          }
-        });
+        // per-IP — horizontal bar (admin-only; canvas absent for non-admins)
+        const ipsCanvas = document.getElementById('chart-ips');
+        if (ipsCanvas) {
+          const ips = data.by_ip || [];
+          new Chart(ipsCanvas, {
+            type: 'bar',
+            data: {
+              labels: ips.map(x => x.ip),
+              datasets: [{ data: ips.map(x => x.n), backgroundColor: PURPLE }]
+            },
+            options: {
+              indexAxis: 'y',
+              plugins: { legend: { display: false } },
+              scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+              maintainAspectRatio: false,
+            }
+          });
+        }
       }
 
       // Filter chips

@@ -61,7 +61,10 @@
 
     <div id="form-result" class="mt-6"></div>
 
-    <div id="recent" hx-get="/library/fragment" hx-trigger="load, every 5s" hx-swap="innerHTML" class="mt-6"></div>
+    <!-- morph swap (not innerHTML) so a playing <audio> isn't destroyed every 5s.
+         idiomorph preserves nodes whose id is unchanged → playback continues. -->
+    <div id="recent" hx-get="/library/fragment" hx-trigger="load, every 5s"
+         hx-swap="morph:innerHTML" hx-ext="morph" class="mt-6"></div>
   </div>
 
   <aside class="lg:col-span-2">

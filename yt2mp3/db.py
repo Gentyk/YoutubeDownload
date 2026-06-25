@@ -45,9 +45,19 @@ CREATE INDEX IF NOT EXISTS idx_deleted_at ON downloads(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_client_ip ON downloads(client_ip);
 """
 
+# Key/value settings — runtime-toggled flags that must survive restart.
+# Currently holds `login_required` (the admin auth toggle).
+SCHEMA_V3 = """
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+"""
+
 MIGRATIONS: list[tuple[int, str]] = [
     (1, SCHEMA_V1),
     (2, SCHEMA_V2),
+    (3, SCHEMA_V3),
 ]
 
 
@@ -264,3 +274,32 @@ def duration_samples(conn: sqlite3.Connection, last_n: int = 500) -> list[int]:
         (last_n,),
     ).fetchall()
     return [int(r["duration_s"]) for r in rows]
+
+
+# --- settings (key/value) ---------------------------------------------------
+
+def get_setting(
+    conn: sqlite3.Connection, key: str, default: str | None = None
+) -> str | None:
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row is not None else default
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO settings(key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )
+
+
+LOGIN_REQUIRED_KEY = "login_required"
+
+
+def get_login_required(conn: sqlite3.Connection) -> bool:
+    """Whether the whole site requires login. Default False (open to all)."""
+    return get_setting(conn, LOGIN_REQUIRED_KEY, "0") == "1"
+
+
+def set_login_required(conn: sqlite3.Connection, enabled: bool) -> None:
+    set_setting(conn, LOGIN_REQUIRED_KEY, "1" if enabled else "0")

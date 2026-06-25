@@ -29,3 +29,7 @@ downloads/
 .idea/
 *.swp
 creds
+
+# secrets / deploy creds
+.env
+.deploy-creds.txt

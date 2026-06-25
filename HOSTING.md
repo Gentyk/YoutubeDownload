@@ -1,6 +1,9 @@
 # Деплой yt2mp3 на удалённый сервер
 
-Что получится: обычный сайт по адресу `http://<твой-ip>:8000` (или `https://yt2mp3.твой-домен.com` если повесишь Caddy) с формой логина — ввёл логин/пароль, и пользуешься как локально.
+Что получится: сайт по адресу `https://yt2mp3.твой-домен.com` с авто-HTTPS (Caddy +
+Let's Encrypt, всё в `docker compose`). По умолчанию сайт **открыт всем без логина**;
+в админ-панели `/admin` можно включить обязательный логин на всём сайте. Удаление файлов
+и аналитика по IP всегда только для админа.
 
 ---
 
@@ -27,11 +30,13 @@ apt install -y docker.io docker-compose-v2 git ufw
 adduser --disabled-password --gecos "" yt2mp3
 usermod -aG docker yt2mp3
 
-# Firewall: открываем SSH и порт приложения
+# Firewall: SSH + HTTP/HTTPS (Caddy). Порт 8000 наружу НЕ открываем —
+# приложение слушает только внутреннюю docker-сеть, наружу смотрит Caddy.
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow ssh
-ufw allow 8000/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
 ufw enable
 
 # Дальше работаем под yt2mp3
@@ -63,104 +68,72 @@ cd ~/yt2mp3
 
 ---
 
-## 4. Настрой логин и пароль
+## 4. Домен и настройки (.env)
+
+### 4.1. Купи домен и направь A-запись на IP сервера
+
+Например `yt2mp3.example.com → 5.6.7.8`. Любой регистратор (Namecheap, Reg.ru, Cloudflare).
+Caddy получит Let's Encrypt сертификат автоматически по этому домену.
+
+### 4.2. Заполни `.env`
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Заполни:
 ```
+DOMAIN=yt2mp3.example.com
+
+# Учётка АДМИНА (нужна для админ-панели и переключателя логина).
+# Сам сайт открыт всем по умолчанию — это только для /admin.
 YT2MP3_AUTH_USER=admin
 YT2MP3_AUTH_PASS=<длинный_рандомный_пароль>
 YT2MP3_SECRET_KEY=<ещё_один_длинный_рандомный_токен>
 ```
 
-Сгенерировать рандом одной командой:
+Сгенерировать рандом:
 ```bash
 openssl rand -base64 24      # пароль
 openssl rand -base64 48      # secret_key
 ```
 
-**Зачем `SECRET_KEY`**: подписывает cookie-сессию. Если не задать — генерится случайно при каждом старте, и тебя будет «выкидывать» при каждом перезапуске контейнера. С заданным `SECRET_KEY` логин сохраняется надолго (по умолчанию 14 дней).
+- **`DOMAIN`** — для авто-HTTPS. Должен резолвиться на этот сервер, порты 80/443 открыты.
+- **`AUTH_USER/PASS`** — учётка админа. Без неё сайт полностью открыт и админки нет.
+- **`SECRET_KEY`** — подписывает cookie-сессию. Если не задать — генерится случайно при
+  каждом старте, и админа «выкидывает» при каждом рестарте. С заданным ключом логин
+  держится ~14 дней.
+
+> Файл `.env` в `.gitignore` — секреты в репозиторий не попадают. Не коммить пароли.
 
 ---
 
-## 5. Открой порт наружу
-
-В `docker-compose.yml` поменяй:
-```yaml
-- "127.0.0.1:8000:8000"
-```
-на:
-```yaml
-- "8000:8000"
-```
-
----
-
-## 6. Запусти
+## 5. Запусти (приложение + Caddy + HTTPS — одной командой)
 
 ```bash
 mkdir -p data
 docker compose up -d --build
-docker compose logs -f         # увидишь "Login ENABLED (user=admin)" — жми Ctrl+C
+docker compose logs -f         # "Admin ENABLED (user=admin); site login: OPEN" — Ctrl+C
 ```
 
-Открывай в браузере: **`http://<ip-сервера>:8000`** — увидишь форму логина. Войдёшь — попадёшь на главную, всё работает как локально.
+`docker-compose.yml` поднимает два контейнера: `yt2mp3` (слушает только внутреннюю
+docker-сеть) и `caddy` (порты 80/443, авто-Let's Encrypt, reverse-proxy на приложение).
+
+Открывай **`https://yt2mp3.твой-домен.com`** — настоящий HTTPS. Сайт открыт всем.
 
 ---
 
-## 7. (Опционально, но желательно) HTTPS через Caddy
+## 6. Управление доступом (открыто / под логином)
 
-Если оставить как есть — пароль ходит в открытом виде по HTTP. Это **плохо**, если ты собираешься пользоваться из публичных Wi-Fi сетей. Поставь Caddy с авто-HTTPS:
+- По умолчанию сайт **открыт всем** — логин не нужен.
+- Зайди на **`/admin`** (потребует логин админа из `.env`) → переключатель
+  «Требовать логин для всего сайта». Включил — весь сайт под логином; выключил — снова
+  открыт. Состояние хранится в БД (`data/yt2mp3.db`) и переживает рестарт.
+- Удаление треков с сервера и аналитика «по IP» в любом режиме доступны только админу.
 
-### 7.1. Купи домен и направь A-запись на IP сервера
-
-Например, `yt2mp3.example.com → 5.6.7.8`. Любой регистратор работает (Namecheap, Reg.ru, Cloudflare).
-
-### 7.2. Установи Caddy
-
-```bash
-# На сервере, под root (exit из yt2mp3-сессии или sudo)
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update && sudo apt install -y caddy
-```
-
-### 7.3. Caddyfile
-
-```bash
-sudo nano /etc/caddy/Caddyfile
-```
-Содержимое:
-```
-yt2mp3.твой-домен.com {
-    reverse_proxy 127.0.0.1:8000
-}
-```
-
-### 7.4. Закрой 8000, открой 443
-
-```bash
-sudo systemctl reload caddy
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw delete allow 8000/tcp
-```
-
-В `docker-compose.yml` верни биндинг на localhost (Caddy сам ходит туда):
-```yaml
-- "127.0.0.1:8000:8000"
-```
-Перезапусти приложение:
-```bash
-docker compose up -d
-```
-
-Caddy сам получит Let's Encrypt сертификат за 30 секунд. Открывай **`https://yt2mp3.твой-домен.com`** — настоящий HTTPS, пароль больше не утекает.
+Запуск **без** Caddy (например, за своим nginx или для локального теста): добавь
+приложению `ports: ["127.0.0.1:8000:8000"]`, убери сервис `caddy`, и поставь
+`YT2MP3_SECURE_COOKIES=0`, если ходишь по HTTP.
 
 ---
 

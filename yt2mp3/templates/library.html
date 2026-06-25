@@ -38,6 +38,7 @@
                 <a href="/file/{{ r.id }}" class="text-brand-700 hover:underline text-sm font-medium" title="Скачать на устройство" download>
                   ↓
                 </a>
+                {% if not ADMIN_ENABLED or is_admin(request) %}
                 <form
                   hx-post="/file/{{ r.id }}/delete"
                   hx-confirm="Удалить «{{ (r.title or r.url) | truncate(40) }}» с сервера? Файл будет стёрт безвозвратно."
@@ -49,6 +50,7 @@
                     ✕
                   </button>
                 </form>
+                {% endif %}
               </div>
               <audio controls preload="none" class="w-full mt-3" src="/file/{{ r.id }}"></audio>
             </li>

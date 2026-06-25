@@ -28,10 +28,23 @@ MAX_QUEUE_SIZE = int(os.environ.get("YT2MP3_MAX_QUEUE_SIZE", "50"))
 HOST = os.environ.get("YT2MP3_HOST", "127.0.0.1")
 PORT = int(os.environ.get("YT2MP3_PORT", "8000"))
 
-# Login (cookie-session). Enforced when BOTH user and pass are set.
-# Leave empty for local-only deployments.
+# Admin credentials (cookie-session). When BOTH are set, the admin panel and the
+# login toggle become available; /admin and destructive actions require this login.
+# Whether the *rest* of the site requires login is a runtime toggle stored in the
+# DB (settings.login_required, default off → site open to all).
+# Leave empty to run fully open with no admin panel.
 AUTH_USER = os.environ.get("YT2MP3_AUTH_USER", "")
 AUTH_PASS = os.environ.get("YT2MP3_AUTH_PASS", "")
+
+# Admin features (login, /admin, toggle) are available only when creds are set.
+ADMIN_ENABLED = bool(AUTH_USER and AUTH_PASS)
+
+# Mark session cookie as Secure (HTTPS-only). Set "1" when behind HTTPS (Caddy).
+SECURE_COOKIES = os.environ.get("YT2MP3_SECURE_COOKIES", "0") == "1"
+
+# Trust X-Forwarded-* from this many upstream proxies (Caddy/nginx). "*" trusts all.
+# Only relevant when running behind a reverse proxy.
+FORWARDED_ALLOW_IPS = os.environ.get("YT2MP3_FORWARDED_ALLOW_IPS", "127.0.0.1")
 
 # Signing key for session cookies. If unset, a random key is generated at
 # startup — that means sessions invalidate on every restart. For stable

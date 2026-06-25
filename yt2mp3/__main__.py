@@ -80,6 +80,11 @@ def main() -> int:
         port=config.PORT,
         log_config=None,
         access_log=False,
+        # Behind Caddy/nginx: honour X-Forwarded-For/Proto so client IP and the
+        # HTTPS scheme are correct. forwarded_allow_ips restricts which upstreams
+        # we trust (default 127.0.0.1 — the reverse proxy).
+        proxy_headers=True,
+        forwarded_allow_ips=config.FORWARDED_ALLOW_IPS,
     )
     return 0
 

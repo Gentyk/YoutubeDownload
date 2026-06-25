@@ -68,3 +68,16 @@ def test_dedup_invalid_video_id_includes_path_chars(tmp_db_path):
     result = dedup_check(tmp_db_path, bad, force=False)
     assert result.action == "invalid"
     _ = Path  # keep import noise quiet
+
+
+# --- settings (login toggle persistence) ------------------------------------
+
+def test_settings_login_required_roundtrip(tmp_db_path):
+    from yt2mp3 import db
+
+    with db.connect(tmp_db_path) as conn:
+        assert db.get_login_required(conn) is False  # default open
+        db.set_login_required(conn, True)
+        assert db.get_login_required(conn) is True
+        db.set_login_required(conn, False)
+        assert db.get_login_required(conn) is False

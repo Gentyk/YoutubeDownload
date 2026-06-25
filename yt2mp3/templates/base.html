@@ -57,12 +57,15 @@
       <a href="/" class="text-slate-700 hover:text-brand-700 transition">Скачать</a>
       <a href="/library" class="text-slate-700 hover:text-brand-700 transition">Загружено</a>
       <a href="/stats" class="text-slate-700 hover:text-brand-700 transition">Статистика</a>
-      {% if AUTH_ENABLED and request.url.path != '/login' %}
+      {% if is_admin(request) %}
+        <a href="/admin" class="text-slate-700 hover:text-brand-700 transition">Админ</a>
         <form method="post" action="/logout" class="inline-flex">
           <button type="submit" class="text-slate-400 hover:text-rose-600 transition" title="Выйти">
             Выйти
           </button>
         </form>
+      {% elif ADMIN_ENABLED and request.url.path != '/login' %}
+        <a href="/login" class="text-slate-400 hover:text-brand-700 transition" title="Вход для админа">Войти</a>
       {% endif %}
     </nav>
   </div>

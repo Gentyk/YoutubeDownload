@@ -14,3 +14,7 @@ downloads
 .DS_Store
 tests
 gstack
+.env
+creds
+.deploy-creds.txt
+data

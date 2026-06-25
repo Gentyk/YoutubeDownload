@@ -3,22 +3,52 @@ services:
     build: .
     container_name: yt2mp3
     restart: unless-stopped
-    ports:
-      # Bound globally — sets the page accessible at http://<server-ip>:8000.
-      # Behind Caddy/nginx? Change to "127.0.0.1:8000:8000".
-      - "8000:8000"
+    # No host port published — only Caddy (same Docker network) talks to it.
+    # Running WITHOUT Caddy? Add:  ports: ["127.0.0.1:8000:8000"]
+    expose:
+      - "8000"
     volumes:
       - ./data:/data
     environment:
       # Concurrency
       YT2MP3_MAX_CONCURRENT: "3"
       YT2MP3_MAX_QUEUE_SIZE: "50"
-      # Login — set USER + PASS in .env to enable the login form.
+      # Admin login — set USER + PASS in .env to enable the admin panel + toggle.
+      # The site is OPEN by default; the admin enables/disables login from /admin.
       YT2MP3_AUTH_USER: "${YT2MP3_AUTH_USER:-}"
       YT2MP3_AUTH_PASS: "${YT2MP3_AUTH_PASS:-}"
       YT2MP3_SECRET_KEY: "${YT2MP3_SECRET_KEY:-}"
+      # Behind Caddy (HTTPS) → mark session cookie Secure + trust the proxy.
+      YT2MP3_SECURE_COOKIES: "1"
+      YT2MP3_FORWARDED_ALLOW_IPS: "*"
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  caddy:
+    image: caddy:2
+    container_name: yt2mp3-caddy
+    restart: unless-stopped
+    depends_on:
+      - yt2mp3
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Your domain, e.g. yt2mp3.example.com — set in .env.
+      DOMAIN: "${DOMAIN:?set DOMAIN in .env, e.g. yt2mp3.example.com}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:

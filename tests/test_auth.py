@@ -34,13 +34,73 @@ def test_no_auth_required_when_env_unset(client):
     assert r.status_code == 303
 
 
-def test_unauthenticated_request_redirects_to_login(monkeypatch, tmp_db_path, tmp_download_dir):
+def _login(c, user="vlad", password="s3cret"):
+    return c.post("/login", data={"username": user, "password": password}, follow_redirects=False)
+
+
+def _enable_site_login(c):
+    """Log in as admin and flip the login_required toggle on."""
+    _login(c)
+    c.post("/admin/toggle-login", data={"enabled": "1"}, follow_redirects=False)
+
+
+def test_open_by_default_even_with_admin_creds(monkeypatch, tmp_db_path, tmp_download_dir):
+    """Setting admin creds enables /admin but leaves the site OPEN by default."""
     app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
     with TestClient(app) as c:
+        assert c.get("/", follow_redirects=False).status_code == 200
+        assert c.get("/library", follow_redirects=False).status_code == 200
+
+
+def test_admin_panel_requires_login(monkeypatch, tmp_db_path, tmp_download_dir):
+    app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
+    with TestClient(app) as c:
+        r = c.get("/admin", follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"].startswith("/login")
+        _login(c)
+        assert c.get("/admin", follow_redirects=False).status_code == 200
+
+
+def test_toggle_login_closes_whole_site(monkeypatch, tmp_db_path, tmp_download_dir):
+    app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
+    with TestClient(app) as c:
+        _enable_site_login(c)
+        # Drop the admin session → site now demands login.
+        c.cookies.clear()
         r = c.get("/", follow_redirects=False)
         assert r.status_code == 303
         assert r.headers["location"].startswith("/login")
         assert "next=" in r.headers["location"]
+
+
+def test_toggle_persists_across_restart(monkeypatch, tmp_db_path, tmp_download_dir):
+    """login_required is stored in the DB, so a fresh app instance keeps it on."""
+    app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
+    with TestClient(app) as c:
+        _enable_site_login(c)
+    # New app instance over the SAME db file → toggle still on.
+    with TestClient(app) as c2:
+        assert c2.get("/", follow_redirects=False).status_code == 303
+
+
+def test_delete_is_admin_only(monkeypatch, tmp_db_path, tmp_download_dir):
+    """Even in open mode, deleting a file requires the admin session."""
+    app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
+    with TestClient(app) as c:
+        # Open site, but delete redirects to login for anonymous users.
+        r = c.post("/file/1/delete", follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"].startswith("/login")
+
+
+def test_security_headers_present(monkeypatch, tmp_db_path, tmp_download_dir):
+    app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
+    with TestClient(app) as c:
+        r = c.get("/healthz")
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["x-frame-options"] == "DENY"
+        assert r.headers["referrer-policy"] == "no-referrer"
 
 
 def test_login_form_renders(monkeypatch, tmp_db_path, tmp_download_dir):
@@ -80,7 +140,7 @@ def test_login_with_wrong_password_returns_401(monkeypatch, tmp_db_path, tmp_dow
 def test_logout_clears_session(monkeypatch, tmp_db_path, tmp_download_dir):
     app = _reload_with_auth(monkeypatch, "vlad", "s3cret", tmp_db_path, tmp_download_dir)
     with TestClient(app) as c:
-        c.post("/login", data={"username": "vlad", "password": "s3cret"})
+        _enable_site_login(c)  # close the site so logout has an observable effect
         assert c.get("/", follow_redirects=False).status_code == 200
         r = c.post("/logout", follow_redirects=False)
         assert r.status_code == 303
@@ -126,6 +186,14 @@ def test_open_redirect_protection(monkeypatch, tmp_db_path, tmp_download_dir):
             follow_redirects=False,
         )
         assert r2.headers["location"] == "/"
+
+        # Backslash trick — browsers may treat "/\\evil.com" as "//evil.com".
+        r3 = c.post(
+            "/login",
+            data={"username": "vlad", "password": "s3cret", "next": "/\\evil.com"},
+            follow_redirects=False,
+        )
+        assert r3.headers["location"] == "/"
 
 
 def test_already_logged_in_login_get_redirects_home(monkeypatch, tmp_db_path, tmp_download_dir):
