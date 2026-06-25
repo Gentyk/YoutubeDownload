@@ -149,6 +149,9 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 ADMIN_ENABLED = config.ADMIN_ENABLED
 templates.env.globals["ADMIN_ENABLED"] = ADMIN_ENABLED
+# Cache-buster for app.js/app.css — bump on each release so browsers fetch fresh.
+ASSET_VER = "3.4"
+templates.env.globals["ASSET_VER"] = ASSET_VER
 
 _OPEN_PATHS = frozenset({"/login", "/logout", "/healthz", "/robots.txt", "/sitemap.xml"})
 _OPEN_PREFIXES = ("/static/", "/lang/")
@@ -250,6 +253,15 @@ class SecurityHeadersMiddleware:
                     (b"x-frame-options", b"DENY"),
                     (b"referrer-policy", b"no-referrer"),
                 ])
+                # HTML pages must always revalidate so a deploy is picked up
+                # immediately (and the versioned asset URLs inside change).
+                ctype = b""
+                for k, v in headers:
+                    if k.lower() == b"content-type":
+                        ctype = v
+                        break
+                if ctype.startswith(b"text/html"):
+                    headers.append((b"cache-control", b"no-cache"))
             await send(message)
 
         await self.app(scope, receive, send_wrapper)

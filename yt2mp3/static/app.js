@@ -80,15 +80,20 @@
       <div class="ball-prog"><svg viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="16"/><circle class="fg" cx="18" cy="18" r="16"/></svg></div>
       <div class="ball-body"><span class="ball-title"></span><span class="ball-state"></span></div>`;
     stage.appendChild(el);
-    balls.set(id, { state: null, el, landed: false });
+    balls.set(id, { state: null, el, landed: false, url });
     stage.classList.add("has-balls");
     updateBall(id, state, pct, title, null);
+  }
+
+  function shortName(url) {
+    try { const u = new URL(url); return (u.searchParams.get("v") || u.pathname.split("/").pop() || url).slice(0, 16); }
+    catch (e) { return (url || "").slice(0, 16); }
   }
 
   function updateBall(id, state, pct, title, error) {
     const b = balls.get(id);
     if (!b || b.landed) return;
-    b.el.querySelector(".ball-title").textContent = title || "…";
+    b.el.querySelector(".ball-title").textContent = title || shortName(b.url);
     const label = { queued: T.queued, downloading: T.downloading, converting: T.converting, done: T.ready, failed: T.failed, cancelled: T.failed }[state] || state;
     b.el.querySelector(".ball-state").textContent = error ? (T.failed) : label;
     const fg = b.el.querySelector(".fg");
@@ -102,12 +107,10 @@
       if (!b.el.querySelector(".ball-retry")) {
         const r = document.createElement("button");
         r.className = "ball-retry"; r.textContent = T.retry;
-        r.onclick = (e) => { e.stopPropagation(); balls.delete(id); b.el.remove(); submit(b._url || ""); };
-        b._url = b.el.dataset.url;
+        r.onclick = (e) => { e.stopPropagation(); balls.delete(id); b.el.remove(); if (!balls.size) stage.classList.remove("has-balls"); submit(b.url || ""); };
         b.el.appendChild(r);
       }
     }
-    b.el.dataset.url = b.el.dataset.url || "";
     if (state === "done" && b.state !== "done") land(id);
     b.state = state;
   }

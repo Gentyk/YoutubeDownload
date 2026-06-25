@@ -2,9 +2,9 @@
 {% block title %}yt2mp3 — {{ t('nav_download') }}{% endblock %}
 
 {% block head %}
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v={{ ASSET_VER }}">
   <script>window.I18N = {{ js_strings_json()|safe }};</script>
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v={{ ASSET_VER }}" defer></script>
 {% endblock %}
 
 {% block content %}
